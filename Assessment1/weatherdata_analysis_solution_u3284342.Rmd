@@ -1,0 +1,714 @@
+---
+title: 'Introduction to Data Science 11372 & 11516'
+subtitle: 'Assignment 1 - Data Wrangling - Solution'
+author: 'provide your name'
+output:
+  html_document: rmdformats::readthedown
+editor_options:
+  markdown:
+    wrap: 100
+params:
+  studentID: 'u3284342'
+---
+
+***
+
+**Your student ID (as recorded in Canvas):** `r params$studentID`
+
+***
+
+# Before you start
+
+1. Replace `uXXXXXXX` in the `params:` block above with your own student ID, and put your name in
+   the `author:` field. Everything in this document is generated from that ID.
+2. Rename this file to `weatherdata_analysis_solution_uXXXXXX.Rmd`.
+3. Work through the tasks in order. Each task has its own chunk or prose block below — write your
+   answer in the block provided and do not renumber them.
+4. Knit the document before you submit and check that every chunk ran.
+
+This document knits with the `rmdformats` output format. If knitting fails with an error about
+`rmdformats`, install it once with `install.packages("rmdformats")` and knit again.
+
+***
+
+# Setup — generate your dataset
+
+Run this chunk exactly as provided. **Do not edit the generator.** If you change it, the dataset
+your marker regenerates will not match yours and your fingerprint check will fail.
+
+```{r setup, include=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+## --------------------------------------------------------------------------
+## DO NOT EDIT THIS BLOCK
+## --------------------------------------------------------------------------
+
+seed_from_id <- function(student_id) {
+  id <- toupper(gsub("[^0-9A-Za-z]", "", as.character(student_id)))
+  if (nchar(id) == 0L) stop("student_id must contain letters or digits.")
+  ch <- utf8ToInt(id)
+  h  <- 5381                                    # djb2-style rolling hash
+  for (k in ch) h <- (h * 33 + k) %% 2147483647
+  as.integer(h %% 1000000000) + 1L
+}
+
+generate_weather_data <- function(student_id,
+                                  start_date = as.Date("2024-01-01"),
+                                  end_date   = as.Date("2025-12-31")) {
+
+  RNGkind("Mersenne-Twister", "Inversion", "Rejection")   # reproducible on R >= 3.6
+  set.seed(seed_from_id(student_id))
+
+  dates <- seq.Date(start_date, end_date, by = "day")
+  n     <- length(dates)
+  doy   <- as.numeric(format(dates, "%j"))
+  yr    <- as.integer(format(dates, "%Y"))
+  w     <- 2 * pi * (doy - 20) / 365.25            # temperature peak ~20 January
+
+  ## 1. Rainfall: two-state Markov chain (wet and dry spells) ---------------
+  seas_wet <- 1 + 0.18 * cos(2 * pi * (doy - 105) / 365.25)   # autumn maximum
+  p_dw <- pmin(0.9, 0.260 * seas_wet)              # P(wet today | dry yesterday)
+  p_ww <- pmin(0.9, 0.580 * seas_wet)              # P(wet today | wet yesterday)
+  wet  <- logical(n); wet[1] <- runif(1) < 0.3
+  for (i in 2:n) wet[i] <- runif(1) < if (wet[i - 1]) p_ww[i] else p_dw[i]
+  rain <- ifelse(wet, rgamma(n, shape = 0.80, scale = 10.5), 0)
+  rain <- round(pmin(rain, 210), 1)
+  rain[rain < 0.2] <- 0                            # below gauge resolution
+  wet  <- rain > 0
+
+  ## 2. Temperature: climatology + AR(1) anomaly + summer heatwave spikes ---
+  t_clim <- 18.8 + 5.3 * cos(w)
+  phi <- 0.74; sig <- 2.6 * sqrt(1 - phi^2)
+  anom <- numeric(n); anom[1] <- rnorm(1, 0, 2.6)
+  for (i in 2:n) anom[i] <- phi * anom[i - 1] + rnorm(1, 0, sig)
+
+  spike <- rbinom(n, 1, 0.012) * rexp(n, 1 / 3.2) * pmax(0, cos(w))^1.5
+  heat  <- spike                                   # smear over a 3-day heatwave
+  heat[-1]        <- heat[-1]        + 0.70 * spike[-n]
+  heat[-(1:2)]    <- heat[-(1:2)]    + 0.40 * spike[-((n-1):n)]
+  anom <- anom + pmin(heat, 7)
+
+  temp <- t_clim + anom - 1.6 * wet
+
+  ## 3. Relative humidity ----------------------------------------------------
+  rh <- 65 + 2 * cos(w) - 2.1 * anom + 10 * wet + 6 * pmin(1, rain / 20) +
+        rnorm(n, 0, ifelse(wet, 4.5, 6.5))
+  rh <- pmin(99, pmax(24, rh))
+
+  ## 4. Wind speed -----------------------------------------------------------
+  wind <- rweibull(n, shape = 2.1, scale = 15) + 3.5 * wet +
+          1.2 * cos(2 * pi * (doy - 300) / 365.25)
+  wind <- pmax(1.5, wind)
+
+  ## 5. Solar exposure: clear-sky cycle x cloud factor -----------------------
+  ws    <- 2 * pi * (doy - 172) / 365.25           # minimum at winter solstice
+  clear <- 22 - 10.0 * cos(ws)
+  cf    <- ifelse(wet, rbeta(n, 2.4, 2.6), rbeta(n, 9, 1.4))
+  solar <- pmax(0.6, clear * cf)
+
+  ## 6. Soil moisture: single-layer bucket with memory -----------------------
+  sm <- numeric(n); sm[1] <- 30
+  for (i in 2:n) {
+    et    <- (0.12 + 0.035 * max(temp[i], 0)) * (solar[i] / 18)   # evapotranspiration
+    drain <- 0.032 * (sm[i - 1] - 8)                              # slow drainage
+    sm[i] <- min(max(sm[i - 1] + 0.30 * rain[i] - et - drain, 8), 55)
+  }
+  sm <- pmin(56, pmax(5.5, sm + rnorm(n, 0, 0.35)))
+
+  ## 7. Diurnal range and daily extremes -------------------------------------
+  drange <- pmin(14, pmax(2.5, 6.0 + 3.2 * (solar / clear) - 0.03 * rh +
+                               0.40 * anom + rnorm(n, 0, 0.8)))
+  tmax   <- temp + drange / 2
+
+  ## 8. Fire danger: McArthur FFDI on afternoon conditions, binned 1-10 ------
+  drought <- 10 * (1 - (sm - 8) / (55 - 8))
+  rh_pm   <- pmax(8, rh - 18)
+  wind_pm <- wind * 1.25
+  ffdi <- 2 * exp(-0.450 + 0.987 * log(pmax(drought, 0.1)) -
+                    0.0345 * rh_pm + 0.0338 * tmax + 0.0234 * wind_pm)
+  fri  <- as.integer(cut(ffdi,
+            breaks = c(-Inf, 1, 2.5, 5, 8, 12, 17, 24, 35, 50, Inf),
+            labels = FALSE))
+
+  ## 9. D'harawal seasons: onsets jittered +/- 10 days each year -------------
+  season_tbl <- data.frame(
+    Season      = c("Burran", "Marrai'gang", "Burrugin",
+                    "Wiritjiribin", "Ngoonungi", "Parra'dowee"),
+    WeatherName = c("Gadalung Marool", "Bana'murrai'yung", "Tugarah Tuli",
+                    "Tugarah Gunya'marri", "Murrai'yunggory", "Goray'murrai"),
+    Plant       = c("Weetjellan (Lightwood) blooming",
+                    "Lilly Pilly fruit ripening",
+                    "Burringoa (Forest Red Gum) flowering",
+                    "Marrai'uo (Gossamer Wattle) flowering",
+                    "Miwa Gawaian (Waratah) blooming",
+                    "Kai'arrewan (Coast Myall) blooming"),
+    Animal      = c("Male kangaroos aggressive",
+                    "Marrai'gang (quolls) calling for mates",
+                    "Echidnas following mating lines",
+                    "Lyrebirds building display mounds",
+                    "Flying foxes gathering at dusk",
+                    "Eels moving downriver to the sea"),
+    stringsAsFactors = FALSE)
+
+  nominal    <- c(91, 152, 213, 244, 305)          # nominal onsets, day-of-year
+  season_idx <- integer(n)
+  for (y in unique(yr)) {
+    b <- sort(nominal + sample(-10:10, 5, replace = TRUE))
+    k <- yr == y
+    season_idx[k] <- findInterval(doy[k], b) + 1L
+  }
+
+  notes <- c(
+    "Meat is not eaten during the hottest days; fruit and tubers gathered.",
+    "Warm cloaks prepared; groups move toward the coast.",
+    "Shellfish are not taken until the boo'kerrikin blooms.",
+    "Gentle spring rains begin; lyrebird calls heard at dawn.",
+    "Season of ceremony and gathering.",
+    "Fish and eels are plentiful in the bays and estuaries.")
+
+  df <- data.frame(
+    Date              = dates,
+    StationID         = "SYD-CICS-01",
+    Temperature       = round(temp, 1),
+    MaxTemp           = round(tmax, 1),
+    MinTemp           = round(temp - drange / 2, 1),
+    Rainfall          = rain,
+    Humidity          = round(rh, 1),
+    WindSpeed         = round(wind, 1),
+    SolarExposure     = round(solar, 1),
+    SoilMoisture      = round(sm, 1),
+    FireRiskIndex     = fri,
+    Season            = season_tbl$Season[season_idx],
+    SeasonWeatherName = season_tbl$WeatherName[season_idx],
+    IndicatorPlant    = season_tbl$Plant[season_idx],
+    IndicatorAnimal   = season_tbl$Animal[season_idx],
+    CommunityNote     = notes[season_idx],
+    stringsAsFactors  = FALSE)
+
+  df$Season <- factor(df$Season, levels = season_tbl$Season)
+  df
+}
+
+dataset_fingerprint <- function(df) {
+  num <- unlist(df[vapply(df, is.numeric, logical(1))], use.names = FALSE)
+  s <- as.integer(round(sum(num, na.rm = TRUE)))                    %% 1000000L
+  k <- as.integer(sum(utf8ToInt(paste0(as.character(df$Season),
+                                       collapse = ""))))            %% 10000L
+  d <- as.integer(which.max(df$MaxTemp) + 7 * which.max(df$Rainfall)) %% 1000L
+  sprintf("WX-%06d-%04d-%03d", s, k, d)
+}
+
+## --------------------------------------------------------------------------
+## Generate YOUR dataset
+## --------------------------------------------------------------------------
+weather_data <- generate_weather_data(params$studentID)
+
+## Untouched copy of the data exactly as generated. Do not modify or delete it.
+## The fingerprint must always be computed from this object, never from
+## `weather_data`, because later parts of the assignment add columns to
+## `weather_data` and that would change the fingerprint.
+weather_data_orig <- weather_data
+
+cat("Student ID  :", params$studentID, "\n")
+cat("Seed        :", seed_from_id(params$studentID), "\n")
+cat("Rows x Cols :", nrow(weather_data), "x", ncol(weather_data), "\n")
+cat("FINGERPRINT :", dataset_fingerprint(weather_data_orig), "\n")
+
+head(weather_data)
+```
+
+***
+
+# Part A: Data Understanding
+
+Every claim in Part A must be supported by a number that appears in your own knitted output.
+
+## A.1 — Describe your dataset (max 120 words)
+
+```{asis, echo=TRUE}
+
+Write your description here. Cover (a) the measured meteorological variables, (b) the
+seasonal-calendar variables, and (c) two specific analyses this dataset supports. Include at
+least three numeric values from your own data.
+
+This dataset ...
+
+```
+
+## A.2 — Summary statistics
+
+```{r A2}
+#----------------------------------#
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+a. The numeric variable with the largest ratio of standard deviation to mean is ..., which tells
+   me that ...
+
+b. `summary()` treats `Season` differently from `Temperature` because ...
+   To get a mean for it I would have to ...
+
+```
+
+## A.3 — Histograms
+
+```{r A3}
+#----------------------------------#
+
+#----------------------------------#
+```
+
+## A.4 — Read your own plots (max 150 words total)
+
+```{asis, echo=TRUE}
+
+a. The shape of my Temperature histogram is ..., and the data were generated that way because ...
+
+b. My number of dry days is ... . The height of the first bar of the histogram is ... . The
+   difference of ... days is made up of ...
+
+c. The season with the highest mean SoilMoisture is ... (value ...). It is / is not the same
+   season with the highest mean Rainfall, because ...
+
+```
+
+***
+
+# Part B: Vectors, Matrices and Arrays
+
+Throughout Part B, "month" means a calendar month within a specific year (2024-01 ... 2025-12),
+giving 24 groups.
+
+## B.1 — `avg_temp_month`
+
+```{r B1}
+#----------------------------------#
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+The maximum of `avg_temp_month` is ... in month ... .
+
+```
+
+## B.2 — `avg_rain_month`, `avg_hum_month`, `avg_soil_month`
+
+```{r B2}
+#----------------------------------#
+
+#----------------------------------#
+```
+
+## B.3 — Matrix `M_month` (24 x 4)
+
+```{r B3}
+#----------------------------------#
+
+#----------------------------------#
+```
+
+## B.4 — Matrix `M_season`
+
+```{r B4}
+#----------------------------------#
+
+#----------------------------------#
+```
+
+## B.5 — Array `A_month` (year x month x variable)
+
+```{r B5}
+#----------------------------------#
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+The July SolarExposure values are ... (2024) and ... (2025).
+
+```
+
+## B.6 — `t(M_month) %*% avg_temp_month`
+
+```{r B6}
+#----------------------------------#
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+The units of the first element are ..., and the result is not a meaningful summary of my data
+because ...
+
+```
+
+## B.7 — `above_below()` and the `TempFlag` column
+
+```{r B7}
+#----------------------------------#
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+Total number of "a" days: ...
+Month with the highest proportion of "a" days: ... (proportion ...)
+
+The total is not exactly half of 731 because ...
+
+```
+
+## B.8 — Year-on-year comparison
+
+```{r B8}
+#----------------------------------#
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+Largest warming: ... (... °C).  Largest cooling: ... (... °C).
+
+```
+
+***
+
+# Part C: Looping and Conditional Statements
+
+Each chunk below must use an explicit loop or conditional as described, and must contain **one
+comment line in your own words saying *why* you structured the loop the way you did** — not what
+the line does.
+
+## C.1 — Mean `SoilMoisture` for each of the 24 months
+
+```{r C1}
+#----------------------------------#
+# WHY I structured the loop this way:
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+Highest: ... (month ...).  Lowest: ... (month ...).
+
+```
+
+## C.2 — Days with `Temperature` above 26 °C
+
+```{r C2}
+#----------------------------------#
+# WHY I structured the conditional this way:
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+Count: ... , which is ...% of the record.
+
+```
+
+## C.3 — Mean `Humidity` on days below 15 °C
+
+```{r C3}
+#----------------------------------#
+# WHY I structured the loop this way:
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+Mean humidity below 15 °C: ... ; all other days: ... . The difference goes in that direction
+because ...
+
+```
+
+## C.4 — `FireRiskIndex` above 4 in `Burran` and `Burrugin`
+
+```{r C4}
+#----------------------------------#
+# WHY I structured the conditional this way:
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+Burran: ... days.  Burrugin: ... days.
+Each count is / is not consistent with its D'harawal weather name because ...
+
+```
+
+## C.5 — Total `Rainfall` matrix (24 months x 6 seasons)
+
+```{r C5}
+#----------------------------------#
+# WHY I structured the nested loops this way:
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+a. Cells that are exactly zero: ... out of 144.
+
+b. So many cells are zero because ... . The pattern of the non-zero cells tells me that ...
+
+c. Month containing two seasons: ... ; transition date: ...
+
+```
+
+## C.6 — Longest dry spell
+
+```{r C6}
+#----------------------------------#
+# WHY I structured the loop this way:
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+Length: ... days.  Start: ... .  End: ... .
+SoilMoisture on the first day: ... ; on the last day: ... .
+The change goes in that direction because ...
+
+```
+
+***
+
+# Part D: Reasoning, Prediction and Verification
+
+## D.1 — Explain your own code (max 150 words)
+
+```{asis, echo=TRUE}
+
+I am explaining my solution to [Part B task 7 / Part C task 5 / Part C task 6].
+
+Step by step, ...
+
+After each major step the object holds ...
+
+The line that would break with a different number of rows is ..., because ...
+
+```
+
+## D.2 — Predict, then check
+
+Write your predictions in the chunk below **before running anything**.
+
+```{r prediction, eval=FALSE}
+# PREDICTION (write BEFORE running):
+# Q1. Roughly how many days in your record have Rainfall above 20 mm?
+#     My prediction: ____
+# Q2. Will the median of Rainfall be greater or less than the mean? By roughly how much?
+#     My prediction: ____
+# Q3. What proportion of the 731 days in your record are dry (Rainfall == 0)?
+#     My prediction: ____
+```
+
+Now run the three lines below and reconcile.
+
+```{r prediction_check}
+sum(weather_data$Rainfall > 20)                                   # Q1
+c(mean = mean(weather_data$Rainfall),
+  median = median(weather_data$Rainfall))                         # Q2
+mean(weather_data$Rainfall == 0)                                  # Q3
+```
+
+```{asis, echo=TRUE}
+
+Reconciliation (max 80 words):
+
+Q1 actual ... — my prediction was wrong / right because ...
+Q2 actual ... — ...
+Q3 actual ... — ...
+
+```
+
+## D.3 — Test four claims against your data
+
+```{r D3}
+#----------------------------------#
+# Claim 1: wettest calendar month == month with highest mean soil moisture
+
+
+#----------------------------------#
+# Claim 2: 2025 warmer on average than 2024
+
+
+#----------------------------------#
+# Claim 3: fewer than 50 days with Temperature above 25 °C
+
+
+#----------------------------------#
+# Claim 4: longest run of consecutive dry days longer than 18 days
+
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+Claim 1: numbers ... -> TRUE / FALSE
+Claim 2: numbers ... -> TRUE / FALSE
+Claim 3: numbers ... -> TRUE / FALSE
+Claim 4: numbers ... -> TRUE / FALSE
+
+Claim 1 can be false even though rainfall is the only source of soil moisture because ...
+(two sentences)
+
+Claims 2 and 3 came out differently for different students because ... (one sentence)
+
+```
+
+## D.4 — `classify_day()` with thresholds from your own distribution
+
+```{r D4}
+#----------------------------------#
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+Quantile cut-points used: ... and ... (from `quantile()`).
+Counts: Hot ... , Mild ... , Cool ... .
+
+A quantile-based threshold is better than a fixed one on another site's data because ...
+
+```
+
+## D.5 — Debugging: code that runs but is wrong
+
+Both lines use `weather_data_orig`, the unmodified data frame from the setup chunk.
+
+```{r debug}
+# (i)
+avg_temp <- sum(weather_data_orig$Temperature) / length(weather_data_orig)
+avg_temp
+
+# (ii)  intended: the mean humidity on hot, dry days
+hot_dry <- mean(weather_data_orig$Humidity[weather_data_orig$Temperature > 25 |
+                                           weather_data_orig$Rainfall == 0])
+hot_dry
+```
+
+Now compute the correct versions, and the number of days each version of line (ii) selects.
+
+```{r D5_fixed}
+#----------------------------------#
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+Line (i): wrong value ... ; correct value ... .
+What R actually did: ... , and the mistake is silent because ...
+
+Line (ii): wrong value ... (selects ... days); correct value ... (selects ... days).
+What R actually did: ... , and the mistake is silent because ...
+
+```
+
+## D.6 — Interpretation grounded in your own results
+
+```{r D6}
+#----------------------------------#
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+a. Seasons ranked by mean Temperature, with the number of days each covers:
+   1. ... (... °C, ... days)
+   2. ...
+   3. ...
+   4. ...
+   5. ...
+   6. ...
+
+b. "Hot": ... . "Dry" tested as a rate: ... . My dataset does / does not support both halves.
+   A seasonal total would mislead here because ...
+
+c. My dataset cannot be used as evidence for or against the Parra'dowee note because ...
+   The data that would be needed instead are ... (two to three sentences)
+
+```
+
+## D.7 — Write your own classifier
+
+```{r D7}
+#----------------------------------#
+
+#----------------------------------#
+```
+```{asis, echo=TRUE}
+
+Thresholds and the statistic justifying each:
+- Wet: ... because ...
+- Stormy: ... because ...
+
+Counts: Wet ... , Dry ... , Stormy ... .
+
+Stormiest date: ... — Rainfall ... mm, WindSpeed ... km/h, MaxTemp ... °C.
+
+One day I disagree with: ... , because ... . I would change ...
+
+```
+
+***
+
+# Verification and Reproducibility
+
+## Results Summary Table
+
+Fill in this table **manually** from your own output above. Rows 1-11 are checked automatically
+against your student ID; row 12 is marked by inspection. Leave no cell blank; write `NA` and
+explain if you could not compute one.
+
+| # | Quantity | Your value |
+|---|---|---|
+| 1 | Dataset fingerprint (from the setup chunk) | |
+| 2 | Mean `Temperature` over the whole record (2 dp) | |
+| 3 | Total `Rainfall` over the whole record (1 dp) | |
+| 4 | Number of days with `Rainfall == 0` | |
+| 5 | Date of the highest `MaxTemp`, and that value | |
+| 6 | Season with the highest mean `Temperature`, and that mean (2 dp) | |
+| 7 | Number of days with `FireRiskIndex > 4` in `Burran` | |
+| 8 | Length of the longest dry spell (Part C task 6) | |
+| 9 | Start date of the longest dry spell (earliest run, if tied) | |
+| 10 | `cor(SoilMoisture, FireRiskIndex)` (2 dp) | |
+| 11 | Number of `"a"` days from Part B task 7 | |
+| 12 | Your two `classify_day()` quantile cut-points (D.4) | |
+
+## Reproducibility appendix
+
+Leave this chunk unchanged as the **last chunk** of your submission.
+
+```{r reproducibility}
+cat("Student ID  :", params$studentID, "\n")
+cat("Fingerprint :", dataset_fingerprint(weather_data_orig), "\n")
+cat("Knitted at  :", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"), "\n")
+cat("Chunks run  :", length(knitr::all_labels()), "\n\n")
+print(sessionInfo()$R.version$version.string)
+```
+
+## Declaration
+
+```{asis, echo=TRUE}
+
+I confirm that the dataset analysed in this submission was generated from my own student ID,
+that the values reported in the Results Summary Table are the values produced by the code in
+this document, and that all explanations and interpretations are my own work.
+
+Signed: ____________________   Date: __________
+
+```
+
+***
+
+# Overall Conclusion
+
+```{asis, echo=TRUE}
+
+Your overall reflection about this assignment goes here ...
+
+```
