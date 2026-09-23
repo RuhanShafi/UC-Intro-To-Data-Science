@@ -1,35 +1,36 @@
 ---
-title: 'Introduction to Data Science 11372 & 11516'
-subtitle: 'Assignment 1 - Data Wrangling - Solution'
-author: 'provide your name'
+title: "Introduction to Data Science 11372 & 11516"
+author: "Ruhan Shafi"
+subtitle: "Assignment 1 - Data Wrangling - Solution"
 output:
+  pdf_document: default
   html_document: rmdformats::readthedown
 editor_options:
   markdown:
     wrap: 100
 params:
-  studentID: 'u3284342'
+  studentID: u3284342
 ---
 
-***
+----------------------------------------------------------------------------------------------------
 
 **Your student ID (as recorded in Canvas):** `r params$studentID`
 
-***
+----------------------------------------------------------------------------------------------------
 
 # Before you start
 
-1. Replace `uXXXXXXX` in the `params:` block above with your own student ID, and put your name in
-   the `author:` field. Everything in this document is generated from that ID.
-2. Rename this file to `weatherdata_analysis_solution_uXXXXXX.Rmd`.
-3. Work through the tasks in order. Each task has its own chunk or prose block below — write your
-   answer in the block provided and do not renumber them.
-4. Knit the document before you submit and check that every chunk ran.
+1.  Replace `uXXXXXXX` in the `params:` block above with your own student ID, and put your name in
+    the `author:` field. Everything in this document is generated from that ID.
+2.  Rename this file to `weatherdata_analysis_solution_uXXXXXX.Rmd`.
+3.  Work through the tasks in order. Each task has its own chunk or prose block below — write your
+    answer in the block provided and do not renumber them.
+4.  Knit the document before you submit and check that every chunk ran.
 
 This document knits with the `rmdformats` output format. If knitting fails with an error about
 `rmdformats`, install it once with `install.packages("rmdformats")` and knit again.
 
-***
+----------------------------------------------------------------------------------------------------
 
 # Setup — generate your dataset
 
@@ -217,7 +218,7 @@ cat("FINGERPRINT :", dataset_fingerprint(weather_data_orig), "\n")
 head(weather_data)
 ```
 
-***
+----------------------------------------------------------------------------------------------------
 
 # Part A: Data Understanding
 
@@ -231,7 +232,9 @@ Write your description here. Cover (a) the measured meteorological variables, (b
 seasonal-calendar variables, and (c) two specific analyses this dataset supports. Include at
 least three numeric values from your own data.
 
-This dataset ...
+
+This dataset contains 731 daily records (1 Jan 2024 to 31 Dec 2025) from one Sydney station, SYD-CICS-01. The measured variables are mean, maximum and minimum temperature, rainfall,humidity, wind speed, solar exposure, soil moisture and a 1–10 fire risk index. Mean temperature was 17.9 °C, the hottest maximum reached 37.4 °C, and 2512.4 mm of rain fell, with 433 dry days. Each day is also labelled with one of six D'harawal seasons, plus its weather name, indicator plant, indicator animal and a community note; Burran is the most frequent (172 days). The data supports comparing rainfall and soil moisture across the D'harawal seasons, and examining how
+soil moisture, humidity and temperature drive fire risk.
 
 ```
 
@@ -239,9 +242,18 @@ This dataset ...
 
 ```{r A2}
 #----------------------------------#
+cat("Number of days        :", nrow(weather_data), "\n")
+cat("Date range            :", format(range(weather_data$Date), "%d %b %Y"), sep = " ")
+cat("\nMean temperature (°C) :", round(mean(weather_data$Temperature), 1), "\n")
+cat("Highest max temp (°C) :", max(weather_data$MaxTemp), "\n")
+cat("Total rainfall (mm)   :", round(sum(weather_data$Rainfall), 1), "\n")
+cat("Dry days (0 mm)       :", sum(weather_data$Rainfall == 0), "\n\n")
 
+cat("Days per season:\n")
+print(table(weather_data$Season))
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 a. The numeric variable with the largest ratio of standard deviation to mean is ..., which tells
@@ -274,7 +286,7 @@ c. The season with the highest mean SoilMoisture is ... (value ...). It is / is 
 
 ```
 
-***
+----------------------------------------------------------------------------------------------------
 
 # Part B: Vectors, Matrices and Arrays
 
@@ -285,12 +297,18 @@ giving 24 groups.
 
 ```{r B1}
 #----------------------------------#
+month_id <- format(weather_data$Date, "%Y-%m")   # 24 groups: 2024-01 ... 2025-12
 
+avg_temp_month <- tapply(weather_data$Temperature, month_id, mean)
+round(avg_temp_month, 2)
+
+cat("Max:", round(max(avg_temp_month), 2), "°C in", names(which.max(avg_temp_month)), "\n")
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
-The maximum of `avg_temp_month` is ... in month ... .
+The maximum of `avg_temp_month` is 23.67 °C in month Janurary 2025 `2025-01` .
 
 ```
 
@@ -298,7 +316,13 @@ The maximum of `avg_temp_month` is ... in month ... .
 
 ```{r B2}
 #----------------------------------#
+avg_rain_month <- tapply(weather_data$Rainfall,     month_id, mean)
+avg_hum_month  <- tapply(weather_data$Humidity,     month_id, mean)
+avg_soil_month <- tapply(weather_data$SoilMoisture, month_id, mean)
 
+round(avg_rain_month, 2)
+round(avg_hum_month, 2)
+round(avg_soil_month, 2)
 #----------------------------------#
 ```
 
@@ -306,7 +330,12 @@ The maximum of `avg_temp_month` is ... in month ... .
 
 ```{r B3}
 #----------------------------------#
-
+M_month <- cbind(Temperature  = avg_temp_month,
+                 Rainfall     = avg_rain_month,
+                 Humidity     = avg_hum_month,
+                 SoilMoisture = avg_soil_month)
+dim(M_month)
+round(M_month, 2)
 #----------------------------------#
 ```
 
@@ -325,6 +354,7 @@ The maximum of `avg_temp_month` is ... in month ... .
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 The July SolarExposure values are ... (2024) and ... (2025).
@@ -338,6 +368,7 @@ The July SolarExposure values are ... (2024) and ... (2025).
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 The units of the first element are ..., and the result is not a meaningful summary of my data
@@ -352,6 +383,7 @@ because ...
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 Total number of "a" days: ...
@@ -368,19 +400,20 @@ The total is not exactly half of 731 because ...
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 Largest warming: ... (... °C).  Largest cooling: ... (... °C).
 
 ```
 
-***
+----------------------------------------------------------------------------------------------------
 
 # Part C: Looping and Conditional Statements
 
 Each chunk below must use an explicit loop or conditional as described, and must contain **one
-comment line in your own words saying *why* you structured the loop the way you did** — not what
-the line does.
+comment line in your own words saying *why* you structured the loop the way you did** — not what the
+line does.
 
 ## C.1 — Mean `SoilMoisture` for each of the 24 months
 
@@ -390,6 +423,7 @@ the line does.
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 Highest: ... (month ...).  Lowest: ... (month ...).
@@ -404,6 +438,7 @@ Highest: ... (month ...).  Lowest: ... (month ...).
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 Count: ... , which is ...% of the record.
@@ -418,6 +453,7 @@ Count: ... , which is ...% of the record.
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 Mean humidity below 15 °C: ... ; all other days: ... . The difference goes in that direction
@@ -433,6 +469,7 @@ because ...
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 Burran: ... days.  Burrugin: ... days.
@@ -448,6 +485,7 @@ Each count is / is not consistent with its D'harawal weather name because ...
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 a. Cells that are exactly zero: ... out of 144.
@@ -466,6 +504,7 @@ c. Month containing two seasons: ... ; transition date: ...
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 Length: ... days.  Start: ... .  End: ... .
@@ -474,7 +513,7 @@ The change goes in that direction because ...
 
 ```
 
-***
+----------------------------------------------------------------------------------------------------
 
 # Part D: Reasoning, Prediction and Verification
 
@@ -546,6 +585,7 @@ Q3 actual ... — ...
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 Claim 1: numbers ... -> TRUE / FALSE
@@ -567,6 +607,7 @@ Claims 2 and 3 came out differently for different students because ... (one sent
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 Quantile cut-points used: ... and ... (from `quantile()`).
@@ -598,6 +639,7 @@ Now compute the correct versions, and the number of days each version of line (i
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 Line (i): wrong value ... ; correct value ... .
@@ -615,6 +657,7 @@ What R actually did: ... , and the mistake is silent because ...
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 a. Seasons ranked by mean Temperature, with the number of days each covers:
@@ -640,6 +683,7 @@ c. My dataset cannot be used as evidence for or against the Parra'dowee note bec
 
 #----------------------------------#
 ```
+
 ```{asis, echo=TRUE}
 
 Thresholds and the statistic justifying each:
@@ -654,36 +698,36 @@ One day I disagree with: ... , because ... . I would change ...
 
 ```
 
-***
+----------------------------------------------------------------------------------------------------
 
 # Verification and Reproducibility
 
 ## Results Summary Table
 
 Fill in this table **manually** from your own output above. Rows 1-11 are checked automatically
-against your student ID; row 12 is marked by inspection. Leave no cell blank; write `NA` and
-explain if you could not compute one.
+against your student ID; row 12 is marked by inspection. Leave no cell blank; write `NA` and explain
+if you could not compute one.
 
-| # | Quantity | Your value |
-|---|---|---|
-| 1 | Dataset fingerprint (from the setup chunk) | |
-| 2 | Mean `Temperature` over the whole record (2 dp) | |
-| 3 | Total `Rainfall` over the whole record (1 dp) | |
-| 4 | Number of days with `Rainfall == 0` | |
-| 5 | Date of the highest `MaxTemp`, and that value | |
-| 6 | Season with the highest mean `Temperature`, and that mean (2 dp) | |
-| 7 | Number of days with `FireRiskIndex > 4` in `Burran` | |
-| 8 | Length of the longest dry spell (Part C task 6) | |
-| 9 | Start date of the longest dry spell (earliest run, if tied) | |
-| 10 | `cor(SoilMoisture, FireRiskIndex)` (2 dp) | |
-| 11 | Number of `"a"` days from Part B task 7 | |
-| 12 | Your two `classify_day()` quantile cut-points (D.4) | |
+| \#  | Quantity                                                         | Your value |
+|-----|------------------------------------------------------------------|------------|
+| 1   | Dataset fingerprint (from the setup chunk)                       |            |
+| 2   | Mean `Temperature` over the whole record (2 dp)                  |            |
+| 3   | Total `Rainfall` over the whole record (1 dp)                    |            |
+| 4   | Number of days with `Rainfall == 0`                              |            |
+| 5   | Date of the highest `MaxTemp`, and that value                    |            |
+| 6   | Season with the highest mean `Temperature`, and that mean (2 dp) |            |
+| 7   | Number of days with `FireRiskIndex > 4` in `Burran`              |            |
+| 8   | Length of the longest dry spell (Part C task 6)                  |            |
+| 9   | Start date of the longest dry spell (earliest run, if tied)      |            |
+| 10  | `cor(SoilMoisture, FireRiskIndex)` (2 dp)                        |            |
+| 11  | Number of `"a"` days from Part B task 7                          |            |
+| 12  | Your two `classify_day()` quantile cut-points (D.4)              |            |
 
 ## Reproducibility appendix
 
 Leave this chunk unchanged as the **last chunk** of your submission.
 
-```{r reproducibility}
+```{r reproducibility, echo=TRUE}
 cat("Student ID  :", params$studentID, "\n")
 cat("Fingerprint :", dataset_fingerprint(weather_data_orig), "\n")
 cat("Knitted at  :", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"), "\n")
@@ -703,7 +747,7 @@ Signed: ____________________   Date: __________
 
 ```
 
-***
+----------------------------------------------------------------------------------------------------
 
 # Overall Conclusion
 
