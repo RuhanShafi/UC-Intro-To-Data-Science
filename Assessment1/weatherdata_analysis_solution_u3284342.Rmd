@@ -1,7 +1,7 @@
 ---
 title: "Introduction to Data Science 11372 & 11516"
-author: "Ruhan Shafi"
-subtitle: "Assignment 1 - Data Wrangling - Solution"
+author: "Ruhan Shafi - u3284342"
+subtitle: "Assignment 1 - Data Wrangling: Solution"
 output:
   pdf_document: default
   html_document: rmdformats::readthedown
@@ -18,28 +18,13 @@ params:
 
 ----------------------------------------------------------------------------------------------------
 
-# Before you start
-
-1.  Replace `uXXXXXXX` in the `params:` block above with your own student ID, and put your name in
-    the `author:` field. Everything in this document is generated from that ID.
-2.  Rename this file to `weatherdata_analysis_solution_uXXXXXX.Rmd`.
-3.  Work through the tasks in order. Each task has its own chunk or prose block below — write your
-    answer in the block provided and do not renumber them.
-4.  Knit the document before you submit and check that every chunk ran.
-
-This document knits with the `rmdformats` output format. If knitting fails with an error about
-`rmdformats`, install it once with `install.packages("rmdformats")` and knit again.
-
-----------------------------------------------------------------------------------------------------
-
-# Setup — generate your dataset
+# Setup: Generating the dataset
 
 Run this chunk exactly as provided. **Do not edit the generator.** If you change it, the dataset
 your marker regenerates will not match yours and your fingerprint check will fail.
 
 ```{r setup, include=TRUE, message=FALSE, warning=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-
+knitr::opts_chunk$set(echo = FALSE)
 ## --------------------------------------------------------------------------
 ## DO NOT EDIT THIS BLOCK
 ## --------------------------------------------------------------------------
@@ -268,11 +253,35 @@ b. `summary()` treats `Season` differently from `Temperature` because ...
 
 ```{r A3}
 #----------------------------------#
+par(mfrow = c(1, 3))
+hist(weather_data$Temperature, main = "Temperature",
+     xlab = "Mean daily temperature (°C)", ylab = "Number of days", col = "grey80")
+hist(weather_data$Rainfall, main = "Rainfall",
+     xlab = "Daily rainfall (mm)", ylab = "Number of days", col = "grey80")
+hist(weather_data$SoilMoisture, main = "Soil moisture",
+     xlab = "Soil moisture (%)", ylab = "Number of days", col = "grey80")
+par(mfrow = c(1, 1))
+
 
 #----------------------------------#
 ```
 
 ## A.4 — Read your own plots (max 150 words total)
+
+```{r A4}
+dry_days <- sum(weather_data$Rainfall == 0)
+h_rain <- hist(weather_data$Rainfall, plot = FALSE)   # same default breaks as A.3
+cat("Dry days          :", dry_days, "\n")
+cat("First bar         :", h_rain$breaks[1], "to", h_rain$breaks[2], "mm, height", h_rain$counts[1], "\n")
+cat("Difference        :", h_rain$counts[1] - dry_days, "\n\n")
+
+season_means <- sapply(weather_data[, c("SoilMoisture", "Rainfall")],
+                       function(x) tapply(x, weather_data$Season, mean))
+round(season_means, 2)
+cat("\nHighest SoilMoisture:", names(which.max(season_means[, "SoilMoisture"])), "\n")
+cat("Highest Rainfall    :", names(which.max(season_means[, "Rainfall"])), "\n")
+
+```
 
 ```{asis, echo=TRUE}
 
@@ -300,15 +309,15 @@ giving 24 groups.
 month_id <- format(weather_data$Date, "%Y-%m")   # 24 groups: 2024-01 ... 2025-12
 
 avg_temp_month <- tapply(weather_data$Temperature, month_id, mean)
-round(avg_temp_month, 2)
+print(round(avg_temp_month, 2))
 
-cat("Max:", round(max(avg_temp_month), 2), "°C in", names(which.max(avg_temp_month)), "\n")
+cat("\nMaximum:", round(max(avg_temp_month), 2), "°C in", names(which.max(avg_temp_month)), "\n")
 #----------------------------------#
 ```
 
 ```{asis, echo=TRUE}
 
-The maximum of `avg_temp_month` is 23.67 °C in month Janurary 2025 `2025-01` .
+The maximum of `avg_temp_month` is 23.67 °C in Janurary 2025 `2025-01` .
 
 ```
 
@@ -330,10 +339,14 @@ round(avg_soil_month, 2)
 
 ```{r B3}
 #----------------------------------#
-M_month <- cbind(Temperature  = avg_temp_month,
-                 Rainfall     = avg_rain_month,
-                 Humidity     = avg_hum_month,
-                 SoilMoisture = avg_soil_month)
+avg_wind_month <- tapply(weather_data$WindSpeed, month_id, mean)
+
+M_month <- cbind(Temperature_C  = avg_temp_month,
+                 Humidity_pct   = avg_hum_month,
+                 WindSpeed_kmh  = avg_wind_month,
+                 SoilMoisture_pct = avg_soil_month)
+rownames(M_month) <- names(avg_temp_month)       # "2024-01" ... "2025-12"
+
 dim(M_month)
 round(M_month, 2)
 #----------------------------------#
@@ -343,7 +356,12 @@ round(M_month, 2)
 
 ```{r B4}
 #----------------------------------#
+season_vars <- c("Temperature", "Rainfall", "Humidity", "WindSpeed", "SolarExposure")
 
+M_season <- sapply(weather_data[, season_vars],
+                   function(x) tapply(x, weather_data$Season, mean))
+
+round(M_season, 1)
 #----------------------------------#
 ```
 
@@ -351,7 +369,23 @@ round(M_month, 2)
 
 ```{r B5}
 #----------------------------------#
+year_id <- format(weather_data$Date, "%Y")
+mon_id  <- factor(month.abb[as.integer(format(weather_data$Date, "%m"))], levels = month.abb)
 
+array_vars <- c("Temperature", "Rainfall", "Humidity",
+                "WindSpeed", "SolarExposure", "FireRiskIndex")
+
+A_month <- array(NA, dim = c(2, 12, length(array_vars)),
+                 dimnames = list(Year = c("2024", "2025"),
+                                 Month = month.abb,
+                                 Variable = array_vars))
+
+for (v in array_vars) {
+  A_month[, , v] <- tapply(weather_data[[v]], list(year_id, mon_id), mean)
+}
+
+dimnames(A_month)
+round(A_month[, "Jul", "SolarExposure"], 2)
 #----------------------------------#
 ```
 
@@ -365,7 +399,9 @@ The July SolarExposure values are ... (2024) and ... (2025).
 
 ```{r B6}
 #----------------------------------#
-
+B6 <- t(M_month) %*% avg_temp_month
+dim(B6)
+round(B6, 2)
 #----------------------------------#
 ```
 
@@ -380,7 +416,21 @@ because ...
 
 ```{r B7}
 #----------------------------------#
+above_below <- function(temps, months) {
+  month_means <- tapply(temps, months, mean)
+  sapply(seq_along(temps), function(i) {
+    if (temps[i] > month_means[months[i]]) "a" else "b"
+  })
+}
 
+weather_data$TempFlag <- above_below(weather_data$Temperature, month_id)
+
+n_a <- sum(weather_data$TempFlag == "a")
+cat("Total 'a' days:", n_a, "of", nrow(weather_data), "\n\n")
+
+prop_a <- tapply(weather_data$TempFlag == "a", month_id, mean)
+round(prop_a, 3)
+cat("\nHighest proportion:", names(which.max(prop_a)), "(", round(max(prop_a), 3), ")\n")
 #----------------------------------#
 ```
 
@@ -397,13 +447,19 @@ The total is not exactly half of 731 because ...
 
 ```{r B8}
 #----------------------------------#
+mm <- sprintf("%02d", 1:12)
+yoy <- avg_temp_month[paste0("2025-", mm)] - avg_temp_month[paste0("2024-", mm)]
+names(yoy) <- month.name
+round(yoy, 2)
 
+cat("\nLargest warming:", names(which.max(yoy)), "(", round(max(yoy), 2), "°C)\n")
+cat("Largest cooling:", names(which.min(yoy)), "(", round(min(yoy), 2), "°C)\n")
 #----------------------------------#
 ```
 
 ```{asis, echo=TRUE}
 
-Largest warming: ... (... °C).  Largest cooling: ... (... °C).
+Largest warming: ... (... °C).  Largest cooling: ... (... °C). (Yes I'm aware that this a duplicate output - GET PERMISSION TO REMOVE DUPLICATE READINGS)
 
 ```
 
@@ -419,8 +475,18 @@ line does.
 
 ```{r C1}
 #----------------------------------#
-# WHY I structured the loop this way:
+# Why: I pre-allocate the vector and loop over the 24 month labels so each iteration fills one named slot, avoiding growing a vector inside the loop.
+months <- sort(unique(month_id))                 # month_id from B.1
+soil_month <- numeric(length(months))
+names(soil_month) <- months
 
+for (i in seq_along(months)) {
+  soil_month[i] <- mean(weather_data$SoilMoisture[month_id == months[i]])
+}
+
+round(soil_month, 2)
+cat("\nHighest:", names(which.max(soil_month)), "(", round(max(soil_month), 2), "%)\n")
+cat("Lowest :", names(which.min(soil_month)), "(", round(min(soil_month), 2), "%)\n")
 #----------------------------------#
 ```
 
@@ -434,7 +500,14 @@ Highest: ... (month ...).  Lowest: ... (month ...).
 
 ```{r C2}
 #----------------------------------#
-# WHY I structured the conditional this way:
+# Why: I loop over every day and use an if statement as a counter so each day is tested against the 26 °C threshold exactly once.
+hot_count <- 0
+for (t in weather_data$Temperature) {
+  if (t > 26) hot_count <- hot_count + 1
+}
+
+cat("Days above 26 °C:", hot_count, "\n")
+cat("Percentage      :", round(100 * hot_count / nrow(weather_data), 2), "%\n")
 
 #----------------------------------#
 ```
@@ -449,8 +522,21 @@ Count: ... , which is ...% of the record.
 
 ```{r C3}
 #----------------------------------#
-# WHY I structured the loop this way:
+# Why: A single pass with if/else fills both groups at once, so the cold-day and other-day means come from the same loop and can't drift apart.
+cold_sum <- 0; cold_n <- 0
+other_sum <- 0; other_n <- 0
 
+for (i in seq_len(nrow(weather_data))) {
+  if (weather_data$Temperature[i] < 15) {
+    cold_sum <- cold_sum + weather_data$Humidity[i]; cold_n <- cold_n + 1
+  } else {
+    other_sum <- other_sum + weather_data$Humidity[i]; other_n <- other_n + 1
+  }
+}
+
+cat("Days below 15 °C       :", cold_n, "\n")
+cat("Mean humidity (< 15 °C):", round(cold_sum / cold_n, 2), "%\n")
+cat("Mean humidity (others) :", round(other_sum / other_n, 2), "%\n")
 #----------------------------------#
 ```
 
@@ -465,8 +551,18 @@ because ...
 
 ```{r C4}
 #----------------------------------#
-# WHY I structured the conditional this way:
+# Why: One loop with two separate if conditions counts both seasons in a single pass, so both counts use identical logic.
+burran_fire <- 0; burrugin_fire <- 0
 
+for (i in seq_len(nrow(weather_data))) {
+  if (weather_data$FireRiskIndex[i] > 4) {
+    if (weather_data$Season[i] == "Burran")   burran_fire   <- burran_fire + 1
+    if (weather_data$Season[i] == "Burrugin") burrugin_fire <- burrugin_fire + 1
+  }
+}
+
+cat("Burran   days with FireRiskIndex > 4:", burran_fire, "of", sum(weather_data$Season == "Burran"), "\n")
+cat("Burrugin days with FireRiskIndex > 4:", burrugin_fire, "of", sum(weather_data$Season == "Burrugin"), "\n")
 #----------------------------------#
 ```
 
@@ -481,8 +577,32 @@ Each count is / is not consistent with its D'harawal weather name because ...
 
 ```{r C5}
 #----------------------------------#
-# WHY I structured the nested loops this way:
+# Why: The outer loop walks the months and the inner loop the seasons, so each of the 144 cells is visited exactly once and filled in place in a pre-allocated matrix.
+season_levels <- levels(weather_data$Season)
+rain_mat <- matrix(0, nrow = length(months), ncol = length(season_levels),
+                   dimnames = list(Month = months, Season = season_levels))
 
+for (i in seq_along(months)) {
+  for (j in seq_along(season_levels)) {
+    rows <- month_id == months[i] & weather_data$Season == season_levels[j]
+    rain_mat[i, j] <- sum(weather_data$Rainfall[rows])
+  }
+}
+
+print(round(rain_mat, 1))
+
+cat("\nCells exactly zero:", sum(rain_mat == 0), "of", length(rain_mat), "\n")
+
+# Separate zeros where the season never occurs from zeros where it occurred but no rain fell
+days_mat <- table(month_id, weather_data$Season)
+cat("Zero because season absent  :", sum(days_mat == 0), "\n")
+cat("Zero despite season present :", sum(rain_mat == 0 & days_mat > 0), "\n\n")
+
+# Transition dates within the record
+chg <- which(weather_data$Season[-1] != weather_data$Season[-nrow(weather_data)]) + 1
+data.frame(Date = weather_data$Date[chg],
+           From = weather_data$Season[chg - 1],
+           To   = weather_data$Season[chg])
 #----------------------------------#
 ```
 
@@ -500,8 +620,31 @@ c. Month containing two seasons: ... ; transition date: ...
 
 ```{r C6}
 #----------------------------------#
-# WHY I structured the loop this way:
+# Why: I track the current run and only replace the best run when a new one is strictly longer, which automatically keeps the earliest run if two tie.
+rain <- weather_data$Rainfall
+cur_len <- 0; cur_start <- NA
+best_len <- 0; best_start <- NA
 
+for (i in seq_along(rain)) {
+  if (rain[i] == 0) {
+    if (cur_len == 0) cur_start <- i
+    cur_len <- cur_len + 1
+    if (cur_len > best_len) {
+      best_len <- cur_len
+      best_start <- cur_start
+    }
+  } else {
+    cur_len <- 0
+  }
+}
+
+best_end <- best_start + best_len - 1
+
+cat("Longest dry spell :", best_len, "days\n")
+cat("Start date        :", format(weather_data$Date[best_start]), "\n")
+cat("End date          :", format(weather_data$Date[best_end]), "\n")
+cat("SoilMoisture start:", weather_data$SoilMoisture[best_start], "%\n")
+cat("SoilMoisture end  :", weather_data$SoilMoisture[best_end], "%\n")
 #----------------------------------#
 ```
 
