@@ -209,24 +209,20 @@ head(weather_data)
 
 Every claim in Part A must be supported by a number that appears in your own knitted output.
 
-## A.1 — Describe your dataset (max 120 words)
+## Task A.1: Describe the dataset in 120 words
 
 ```{asis, echo=TRUE}
-
-Write your description here. Cover (a) the measured meteorological variables, (b) the
-seasonal-calendar variables, and (c) two specific analyses this dataset supports. Include at
-least three numeric values from your own data.
-
 
 This dataset contains 731 daily records (1 Jan 2024 to 31 Dec 2025) from one Sydney station, SYD-CICS-01. The measured variables are mean, maximum and minimum temperature, rainfall,humidity, wind speed, solar exposure, soil moisture and a 1–10 fire risk index. Mean temperature was 17.9 °C, the hottest maximum reached 37.4 °C, and 2512.4 mm of rain fell, with 433 dry days. Each day is also labelled with one of six D'harawal seasons, plus its weather name, indicator plant, indicator animal and a community note; Burran is the most frequent (172 days). The data supports comparing rainfall and soil moisture across the D'harawal seasons, and examining how
 soil moisture, humidity and temperature drive fire risk.
 
 ```
 
-## A.2 — Summary statistics
+## Task A.2: Summary statistics
 
-```{r A2}
+```{r A1}
 #----------------------------------#
+# used in part A.1 to backup data
 cat("Number of days        :", nrow(weather_data), "\n")
 cat("Date range            :", format(range(weather_data$Date), "%d %b %Y"), sep = " ")
 cat("\nMean temperature (°C) :", round(mean(weather_data$Temperature), 1), "\n")
@@ -239,17 +235,38 @@ print(table(weather_data$Season))
 #----------------------------------#
 ```
 
-```{asis, echo=TRUE}
+```{r A2}
+cat("\n--- Summary of the full data frame ---\n")
+print(summary(weather_data))
 
-a. The numeric variable with the largest ratio of standard deviation to mean is ..., which tells
-   me that ...
+# (a) mean, sd and sd/mean ratio of every numeric column
+num_vars <- weather_data[sapply(weather_data, is.numeric)]
+stats <- data.frame(Mean = sapply(num_vars, mean),
+                    SD   = sapply(num_vars, sd))
+stats$SD_to_Mean <- stats$SD / stats$Mean
+print(round(stats[order(-stats$SD_to_Mean), ], 3))
 
-b. `summary()` treats `Season` differently from `Temperature` because ...
-   To get a mean for it I would have to ...
+cat("\nLargest SD/mean ratio:", rownames(stats)[which.max(stats$SD_to_Mean)],
+    "(", round(max(stats$SD_to_Mean), 3), ")\n")
+
+# (b) why summary() treats Season differently from Temperature
+cat("\nClass of Season     :", class(weather_data$Season), "\n")
+cat("Class of Temperature:", class(weather_data$Temperature), "\n")
+print(summary(weather_data$Season))
+print(summary(weather_data$Temperature))
 
 ```
 
-## A.3 — Histograms
+```{asis, echo=TRUE}
+
+
+a. The numeric variable with the largest ratio of standard deviation to mean is Rainfall (1.973, an SD of 6.78 mm against a mean of 3.437 mm), which tells me that daily rainfall is extremely variable and right-skewed, with a median of 0 mm and a maximum of 67.3 mm, so a few heavy-rain days supply most of the total and the mean does not describe a typical day.
+
+b. `summary()` treats `Season` differently from `Temperature` because `Season` is a factor while `Temperature` is numeric, so it reports the count of days in each level (e.g. Burran 172, Wiritjiribin 44) instead of quartiles and a mean (17.9 °C for Temperature). To get a mean for it I would have to convert it to numeric with `as.numeric(weather_data$Season)`, giving level codes 1–6, although that mean would be meaningless because the seasons are categories, not quantities.
+
+```
+
+## Task A.3 — Histograms
 
 ```{r A3}
 #----------------------------------#
@@ -266,11 +283,11 @@ par(mfrow = c(1, 1))
 #----------------------------------#
 ```
 
-## A.4 — Read your own plots (max 150 words total)
+## Task A.4 — Read your own plots (max 150 words total)
 
 ```{r A4}
 dry_days <- sum(weather_data$Rainfall == 0)
-h_rain <- hist(weather_data$Rainfall, plot = FALSE)   # same default breaks as A.3
+h_rain <- hist(weather_data$Rainfall, plot = FALSE)
 cat("Dry days          :", dry_days, "\n")
 cat("First bar         :", h_rain$breaks[1], "to", h_rain$breaks[2], "mm, height", h_rain$counts[1], "\n")
 cat("Difference        :", h_rain$counts[1] - dry_days, "\n\n")
@@ -492,7 +509,7 @@ cat("Lowest :", names(which.min(soil_month)), "(", round(min(soil_month), 2), "%
 
 ```{asis, echo=TRUE}
 
-Highest: ... (month ...).  Lowest: ... (month ...).
+Highest: 45.77 % (month 2024-07).  Lowest: 8.78 % (month 2024-11).
 
 ```
 
@@ -514,7 +531,7 @@ cat("Percentage      :", round(100 * hot_count / nrow(weather_data), 2), "%\n")
 
 ```{asis, echo=TRUE}
 
-Count: ... , which is ...% of the record.
+Count of Days with a Temperature above 26 °C 21 days , which is 2.87% of the record.
 
 ```
 
@@ -672,6 +689,19 @@ After each major step the object holds ...
 
 The line that would break with a different number of rows is ..., because ...
 
+---
+
+
+I chose Part C task 5. First, `months` is a character vector of the 24 month labels and
+`season_levels` is a character vector of the 6 season names. `rain_mat` is pre-allocated as a
+24 × 6 numeric matrix of zeros, labelled with those names. The outer loop takes month i and the
+inner loop season j; for each pair, `rows` is a logical vector of length 731 that is TRUE where a
+day falls in both, and the rainfall on those days is summed into cell [i, j]. After both loops,
+`rain_mat` is a 24 × 6 numeric matrix of rainfall totals in mm. The line
+`rows <- month_id == months[i] & ...` would break with a different number of rows, because
+`month_id` was built once in B.1 with 731 elements; if `weather_data` changed length, the two
+vectors would no longer line up, giving recycled, misaligned or NA totals.
+
 ```
 
 ## D.2 — Predict, then check
@@ -712,18 +742,33 @@ Q3 actual ... — ...
 ```{r D3}
 #----------------------------------#
 # Claim 1: wettest calendar month == month with highest mean soil moisture
+#Claim 1: calendar month (pooled across years) with highest total rain vs highest mean soil moisture
+cal_rain <- tapply(weather_data$Rainfall,     mon_id, sum)    # mon_id from B.5
+cal_soil <- tapply(weather_data$SoilMoisture, mon_id, mean)
+round(rbind(TotalRain_mm = cal_rain, MeanSoil_pct = cal_soil), 1)
+cat("Wettest month:", names(which.max(cal_rain)),
+    "| Highest soil moisture:", names(which.max(cal_soil)),
+    "| Claim 1:", names(which.max(cal_rain)) == names(which.max(cal_soil)), "\n\n")
 
 
 #----------------------------------#
 # Claim 2: 2025 warmer on average than 2024
-
+# Claim 2: 2025 warmer on average than 2024
+yr_temp <- tapply(weather_data$Temperature, year_id, mean)
+round(yr_temp, 3)
+cat("Claim 2:", yr_temp["2025"] > yr_temp["2024"], "\n\n")
 
 #----------------------------------#
 # Claim 3: fewer than 50 days with Temperature above 25 °C
+# Claim 3: fewer than 50 days with mean Temperature above 25 °C
+n25 <- sum(weather_data$Temperature > 25)
+cat("Days above 25 °C:", n25, "| Claim 3:", n25 < 50, "\n\n")
 
 
 #----------------------------------#
 # Claim 4: longest run of consecutive dry days longer than 18 days
+# Claim 4: longest dry spell longer than 18 days (best_len from C.6)
+cat("Longest dry spell:", best_len, "days | Claim 4:", best_len > 18, "\n")
 
 
 #----------------------------------#
@@ -851,20 +896,35 @@ Fill in this table **manually** from your own output above. Rows 1-11 are checke
 against your student ID; row 12 is marked by inspection. Leave no cell blank; write `NA` and explain
 if you could not compute one.
 
-| \#  | Quantity                                                         | Your value |
-|-----|------------------------------------------------------------------|------------|
-| 1   | Dataset fingerprint (from the setup chunk)                       |            |
-| 2   | Mean `Temperature` over the whole record (2 dp)                  |            |
-| 3   | Total `Rainfall` over the whole record (1 dp)                    |            |
-| 4   | Number of days with `Rainfall == 0`                              |            |
-| 5   | Date of the highest `MaxTemp`, and that value                    |            |
-| 6   | Season with the highest mean `Temperature`, and that mean (2 dp) |            |
-| 7   | Number of days with `FireRiskIndex > 4` in `Burran`              |            |
-| 8   | Length of the longest dry spell (Part C task 6)                  |            |
-| 9   | Start date of the longest dry spell (earliest run, if tied)      |            |
-| 10  | `cor(SoilMoisture, FireRiskIndex)` (2 dp)                        |            |
-| 11  | Number of `"a"` days from Part B task 7                          |            |
-| 12  | Your two `classify_day()` quantile cut-points (D.4)              |            |
++--------------+--------------------------------------------------------------------+---------------------+
+| \#           | Quantity                                                           | Your value          |
++==============+====================================================================+=====================+
+| 1            | Dataset fingerprint (from the setup chunk)                         | ```                 |
+|              |                                                                    | WX-134679-6835-871  |
+|              |                                                                    | ```                 |
++--------------+--------------------------------------------------------------------+---------------------+
+| 2            | Mean `Temperature` over the whole record (2 dp)                    |                     |
++--------------+--------------------------------------------------------------------+---------------------+
+| 3            | Total `Rainfall` over the whole record (1 dp)                      |                     |
++--------------+--------------------------------------------------------------------+---------------------+
+| 4            | Number of days with `Rainfall == 0`                                |                     |
++--------------+--------------------------------------------------------------------+---------------------+
+| 5            | Date of the highest `MaxTemp`, and that value                      |                     |
++--------------+--------------------------------------------------------------------+---------------------+
+| 6            | Season with the highest mean `Temperature`, and that mean (2 dp)   |                     |
++--------------+--------------------------------------------------------------------+---------------------+
+| 7            | Number of days with `FireRiskIndex > 4` in `Burran`                |                     |
++--------------+--------------------------------------------------------------------+---------------------+
+| 8            | Length of the longest dry spell (Part C task 6)                    |                     |
++--------------+--------------------------------------------------------------------+---------------------+
+| 9            | Start date of the longest dry spell (earliest run, if tied)        |                     |
++--------------+--------------------------------------------------------------------+---------------------+
+| 10           | `cor(SoilMoisture, FireRiskIndex)` (2 dp)                          |                     |
++--------------+--------------------------------------------------------------------+---------------------+
+| 11           | Number of `"a"` days from Part B task 7                            |                     |
++--------------+--------------------------------------------------------------------+---------------------+
+| 12           | Your two `classify_day()` quantile cut-points (D.4)                |                     |
++--------------+--------------------------------------------------------------------+---------------------+
 
 ## Reproducibility appendix
 
