@@ -1,7 +1,7 @@
 ---
-title: "Introduction to Data Science 11372 & 11516"
-author: "Ruhan Shafi - u3284342"
-subtitle: "Assignment 1 - Data Wrangling: Solution"
+title: "Assignment 1 - Data Wrangling: Solution"
+author: "Ruhan Shafi (u3284342)"
+subtitle: "Introduction to Data Science 11372 & 11516"
 output:
   pdf_document: default
   html_document: rmdformats::readthedown
@@ -12,9 +12,32 @@ params:
   studentID: u3284342
 ---
 
-----------------------------------------------------------------------------------------------------
+## Problem description
 
-**Your student ID (as recorded in Canvas):** `r params$studentID`
+This report analyses a synthetic daily weather record for a coastal, Sydney-like site from 1 January
+2024 to 31 December 2025 (731 days). The record is generated reproducibly from my student ID, so
+every value reported here is specific to my dataset. It combines instrument-style measurements
+(temperature, rainfall, humidity, wind, solar exposure, soil moisture and a fire danger class) with
+the six seasons of the D'harawal calendar.
+
+## Objectives
+
+1.  Understand the structure and distributions of the data (Part A).
+2.  Summarise it with vectors, matrices and arrays (Part B).
+3.  Apply explicit loops and conditional statements (Part C).
+4.  Reason about, predict, test and debug results against my own data (Part D).
+
+## Required libraries
+
+- **knitr**: chunk options and `kable()` tables
+- **rmdformats**: the document template
+
+All other analysis uses base R, so no further packages are needed.
+
+## Anticipated outcome
+
+A fully reproducible Data Analysis report whose fingerprint (WX-134679-6835-871) matches the
+marker's regenerated dataset, with every claim supported by a number in the knitted output.
 
 ----------------------------------------------------------------------------------------------------
 
@@ -24,7 +47,7 @@ Run this chunk exactly as provided. **Do not edit the generator.** If you change
 your marker regenerates will not match yours and your fingerprint check will fail.
 
 ```{r setup, include=TRUE, message=FALSE, warning=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set(echo = TRUE)
 ## --------------------------------------------------------------------------
 ## DO NOT EDIT THIS BLOCK
 ## --------------------------------------------------------------------------
@@ -266,9 +289,10 @@ a.  The numeric variable with the largest ratio of standard deviation to mean is
 
 b.  `summary()` treats `Season` differently from `Temperature` because `Season` is a factor while
     `Temperature` is numeric, so it reports the count of days in each level (e.g. Burran 172,
-    Wiritjiribin 44) instead of quartiles and a mean (17.9 °C for Temperature). To get a mean for it
-    I would have to convert it to numeric with `as.numeric(weather_data$Season)`, giving level codes
-    1–6, although that mean would be meaningless because the seasons are categories, not quantities.
+    Wiritjiribin 44) instead of quadrilles and a mean (17.9 °C for Temperature). To get a mean for
+    it I would have to convert it to numeric with `as.numeric(weather_data$Season)`, giving level
+    codes 1–6, although that mean would be meaningless because the seasons are categories, not
+    quantities.
 
 ## Task A.3: Histograms
 
@@ -416,8 +440,12 @@ round(B6, 2)
 #----------------------------------#
 ```
 
-The units of the first element are ..., and the result is not a meaningful summary of my data
-because ...
+The units of the first element are °C², and the result is not a meaningful summary of my data
+because each element is an uncentred sum of products over the 24 months, not an average or a
+variance: 8114.20 is simply 24 × (monthly mean temperature)², so it grows with the number of months,
+it depends on the arbitrary 0 °C zero of the Celsius scale (in Fahrenheit or Kelvin it would change
+non-proportionally), and the other three elements mix units such as %·°C and km/h·°C that have no
+physical meaning.
 
 ## B.7 — `above_below()` and the `TempFlag` column
 
@@ -441,9 +469,13 @@ cat("\nHighest proportion:", names(which.max(prop_a)), "(", round(max(prop_a), 3
 #----------------------------------#
 ```
 
-Total number of "a" days: ... Month with the highest proportion of "a" days: ... (proportion ...)
+Total number of "a" days: 365 Month with the highest proportion of "a" days: 2024-01 (proportion
+0.645)
 
-The total is not exactly half of 731 because 2024 having 366 days due to it being a leap year
+The total is not exactly half of 731 because 731 is odd, so an exact half (365.5) is impossible, and
+because each day is compared with its own month's mean rather than its median, so a month only
+splits 50/50 when its temperatures are symmetric; in skewed months such as 2024-01 (0.645) and
+2024-06 (0.400) the split is uneven, and days exactly equal to the mean count as "b".
 
 ## B.8 — Year-on-year comparison
 
@@ -530,8 +562,10 @@ cat("Mean humidity (others) :", round(other_sum / other_n, 2), "%\n")
 #----------------------------------#
 ```
 
-Mean humidity below 15 °C: ... ; all other days: ... . The difference goes in that direction because
-...
+Mean humidity below 15 °C: 72.82 % (214 days); all other days: 69.69 %. The difference goes in that
+direction because in the generator humidity rises by 2.1 % for every degree the temperature anomaly
+falls below normal and by 10 % on rain days, and rain days are also cooled by 1.6 °C, so cold days
+are disproportionately cool-anomaly and wet days.
 
 ## C.4 — `FireRiskIndex` above 4 in `Burran` and `Burrugin`
 
@@ -552,8 +586,14 @@ cat("Burrugin days with FireRiskIndex > 4:", burrugin_fire, "of", sum(weather_da
 #----------------------------------#
 ```
 
-Burran: ... days. Burrugin: ... days. Each count is / is not consistent with its D'harawal weather
-name because ...
+Burran: 39 of 172 days (22.7 %).
+
+Burrugin: 3 of 129 days (2.3 %).
+
+Each count is consistent with its D'harawal weather name because the FFDI rises with MaxTemp and
+with the drought factor derived from low soil moisture: Burran (Gadalung Marool, "hot and dry")
+combines summer maximums with dry soil (17.71 %), while Burrugin (Tugarah Tuli, "cold") has low
+maximums and wet soil (32.57 %), which keep fire danger low.
 
 ## C.5 — Total `Rainfall` matrix (24 months x 6 seasons)
 
@@ -588,11 +628,21 @@ data.frame(Date = weather_data$Date[chg],
 #----------------------------------#
 ```
 
-a.  Cells that are exactly zero: ... out of 144.
+a.  Cells that are exactly zero: 113 out of 144.
 
-b.  So many cells are zero because ... . The pattern of the non-zero cells tells me that ...
+b.  So many cells are zero because each month contains only one or two of the six seasons, so 111
+    cells are zero simply because that season has no days in that month; only 2 are zero despite the
+    season being present (Burrugin in 2024-08, which covers only 1 August, and Burrugin in 2025-05,
+    which covers only 30–31 May, both dry). The pattern of the non-zero cells tells me that the
+    seasons form a diagonal staircase from Burran (January–March) to Parra'dowee (October–December),
+    with two-season rows only at transition months (2024-03, 2024-06, 2024-10, 2025-03, 2025-11),
+    and 2025-08 even spanning three seasons. Because onsets are jittered each year, the transition
+    months differ between 2024 and 2025 (e.g. Wiritjiribin lasted 1 August to 31 August in 2024 but
+    only 10–23 August in 2025), so the D'harawal seasons do not line up with Gregorian months.
 
-c.  Month containing two seasons: ... ; transition date: ...
+c.  Month containing two seasons: March 2024 (Burran and Marrai'gang); transition date: 28 March
+
+    2024. 
 
 ## C.6 — Longest dry spell
 
@@ -626,8 +676,9 @@ cat("SoilMoisture end  :", weather_data$SoilMoisture[best_end], "%\n")
 #----------------------------------#
 ```
 
-Length: ... days. Start: ... . End: ... . SoilMoisture on the first day: ... ; on the last day: ...
-. The change goes in that direction because ...
+Length: 15 days. Start: 28 May 2025. End: 11 June 2025. `SoilMoisture` on the first day: 30.6 %; on
+the last day: 18.1 %. The change goes downward because the bucket model keeps losing water to
+evapotranspiration and drainage every day while no rain arrives to refill it.
 
 ----------------------------------------------------------------------------------------------------
 
@@ -649,19 +700,25 @@ misaligned or NA totals.
 
 Write your predictions in the chunk below **before running anything**.
 
-# PREDICTION (write BEFORE running):
+PREDICTION (write BEFORE running):
 
-# Q1. Roughly how many days in your record have Rainfall above 20 mm?
+Q1. Roughly how many days in your record have Rainfall above 20 mm?
 
-# My prediction: \_\_\_\_
+My prediction: Very few. Most rainy days in a temperate coastal climate bring light to moderate
+falls, so days above 20 mm should be rare, heavy-rain events. My approximately rough figure: Around
+14 days
 
-# Q2. Will the median of Rainfall be greater or less than the mean? By roughly how much?
+Q2. Will the median of Rainfall be greater or less than the mean? By roughly how much?
 
-# My prediction: \_\_\_\_
+My prediction: My prediction: The median will be less than the mean. I expect most days to have
+little or no rain, while a few heavy-rain outliers (20 mm or more) pull the mean upward, making the
+distribution strongly right-skewed. My predicted rough figure: approximately 5% difference
 
-# Q3. What proportion of the 731 days in your record are dry (Rainfall == 0)?
+Q3. What proportion of the 731 days in your record are dry (Rainfall == 0)?
 
-# My prediction: \_\_\_\_
+My prediction: My prediction: A large proportion, well over half, because I expect the simulated
+Sydney climate to be fairly dry across most seasons, especially during the summer season, with rain
+arriving on a minority of days.
 
 Now run the three lines below and reconcile.
 
@@ -672,9 +729,15 @@ c(mean = mean(weather_data$Rainfall),
 mean(weather_data$Rainfall == 0)                                  # Q3
 ```
 
-Reconciliation (max 80 words):
+Q1. Actual 28 days (3.8 %) right that it is low, but the cause is the generator's gamma distribution
+(shape 0.8), which makes most wet-day amounts small, not the climate.
 
-Q1 actual ... — my prediction was wrong / right because ... Q2 actual ... — ... Q3 actual ... — ...
+Q2. Actual mean 3.44 mm, median 0 mm: direction right, but I had not realised the median would be
+exactly 0, because over half the days are dry.
+
+Q3. Actual 0.592: My prediction was correct but upon some further research into this finding, I
+found that the main factor for this dryness comes from the Markov chain's long dry spells instead of
+climate being the only factor.
 
 ## D.3 — Test four claims against your data
 
@@ -713,13 +776,21 @@ cat("Longest dry spell:", best_len, "days | Claim 4:", best_len > 18, "\n")
 #----------------------------------#
 ```
 
-Claim 1: numbers ... -\> TRUE / FALSE Claim 2: numbers ... -\> TRUE / FALSE Claim 3: numbers ... -\>
-TRUE / FALSE Claim 4: numbers ... -\> TRUE / FALSE
+Claim 1: wettest calendar month is July (315.9 mm) and the highest mean soil moisture is also July
+(37.8 %) -\> TRUE. Claim 2: 2024 mean 18.01 °C, 2025 mean 17.79 °C -\> FALSE (2025 was 0.23 °C
+cooler). Claim 3: 40 days had a mean Temperature above 25 °C -\> TRUE. Claim 4: the longest dry
+spell is 15 days -\> FALSE.
 
-Claim 1 can be false even though rainfall is the only source of soil moisture because ... (two
-sentences)
+Claim 1 can be false even though rainfall is the only source of soil moisture because soil moisture
+is a bucket with memory, so it reflects rain accumulated over previous weeks and can peak after the
+wettest month rather than during it. It is also drained by evapotranspiration that rises with
+temperature and solar exposure, so a wet but hot month such as December (313.4 mm, yet only 16.6 %
+soil moisture) loses water far faster than a cool winter month.
 
-Claims 2 and 3 came out differently for different students because ... (one sentence)
+Claims 2 and 3 came out differently for different students because every dataset uses a different
+random seed, and the generator's climatology is identical in both years, so the year-to-year
+difference and the count of hot days are driven purely by each student's random anomalies and
+heatwave spikes.
 
 ## D.4 — `classify_day()` with thresholds from your own distribution
 
@@ -739,9 +810,14 @@ table(factor(weather_data$DayClass, levels = c("Cool", "Mild", "Hot")))
 #----------------------------------#
 ```
 
-Quantile cut-points used: ... and ... (from `quantile()`). Counts: Hot ... , Mild ... , Cool ... .
+Quantile cut-points used: 13.2 °C (20th percentile) and 22.6 °C (80th percentile), from quantile().
 
-A quantile-based threshold is better than a fixed one on another site's data because ...
+Counts: Hot 142, Mild 443, Cool 146.
+
+A quantile-based threshold is better than a fixed one on another site's data because it adapts to
+that site's own distribution, always labelling roughly its coolest and hottest 20 % of days, whereas
+fixed 20 °C and 30 °C thresholds could class almost every day at a cold or tropical site the same
+way.
 
 ## D.5 — Debugging: code that runs but is wrong
 
@@ -776,11 +852,17 @@ cat("(ii) right (&):", round(mean(weather_data_orig$Humidity[sel_and]), 2), "% f
 #----------------------------------#
 ```
 
-Line (i): wrong value ... ; correct value ... . What R actually did: ... , and the mistake is silent
-because ...
+Line (i): wrong value 817.88; correct value 17.90.
 
-Line (ii): wrong value ... (selects ... days); correct value ... (selects ... days). What R actually
-did: ... , and the mistake is silent because ...
+How did the error occur: length() on a data frame returns its number of columns (16), not rows
+(731), so it divided the total temperature by 16, and the mistake is silent because a data frame is
+a list of columns, so length() is a perfectly valid call that returns a number.
+
+Line (ii): wrong value 65.66 % (selects 442 days); correct value 61.26 % (selects 31 days, using &).
+
+How did the error occur:: `|` selects days that are hot OR dry, which pulls in all 433 dry days
+whether hot or not, instead of days that are hot AND dry, and the mistake is silent because `|` and
+`&` are both valid logical operators that return a logical vector of the same length.
 
 ## D.6 — Interpretation grounded in your own results
 
@@ -805,18 +887,26 @@ round(data.frame(MeanRain_mm_per_day = rain_rate,
 
 a.  Seasons ranked by mean Temperature, with the number of days each covers:
 
-    1.  ... (... °C, ... days)
-    2.  ...
-    3.  ...
-    4.  ...
-    5.  ...
-    6.  ...
+    1.  Burran (22.25 °C, 172 days)
+    2.  Parra'dowee (21.59 °C, 121 days)
+    3.  Ngoonungi (17.45 °C, 131 days)
+    4.  Marrai'gang (16.94 °C, 134 days)
+    5.  Burrugin (12.31 °C, 129 days)
+    6.  Wiritjiribin (11.45 °C, 44 days)
 
-b.  "Hot": ... . "Dry" tested as a rate: ... . My dataset does / does not support both halves. A
-    seasonal total would mislead here because ...
+b.  "Hot": supported, as Burran is the hottest season at 22.25 °C. "Dry" tested as a rate: Burran
+    averages 3.73 mm per day with rain on 44.2 % of days, the third-highest daily rate and
+    second-highest rain-day proportion of the six seasons, far wetter than Ngoonungi (2.36 mm per
+    day, 29.8 % rain days). My dataset does not support both halves: it is hot but not dry. A
+    seasonal total would mislead here because Burran covers the most days (172, from part a), so its
+    total of 641.9 mm is inflated by the season's length, not by how wet each day is.
 
-c.  My dataset cannot be used as evidence for or against the Parra'dowee note because ... The data
-    that would be needed instead are ... (two to three sentences)
+c.  My dataset cannot be used as evidence for or against the Parra'dowee note because the weather
+    values were simulated by the generator rather than observed on Country, and the CommunityNote is
+    just a fixed label attached to every Parra'dowee day, so nothing in the data measures fish or
+    eels. Testing the statement would require ecological observations such as multi-year fish and
+    eel surveys or catch records from local bays and estuaries, interpreted with guidance from
+    D'harawal Knowledge holders.
 
 ## D.7 — Write your own classifier
 
@@ -851,13 +941,26 @@ weather_data[dry, c("Date", "Rainfall", "WindSpeed", "WeatherClass")][
 #----------------------------------#
 ```
 
-Thresholds and the statistic justifying each: - Wet: ... because ... - Stormy: ... because ...
+Thresholds and the statistic justifying each: - Dry: exactly 0 mm, because 433 of my 731 days (59 %)
+sit at the gauge-resolution floor. - Wet: any rain above 0 mm that does not meet the Stormy rule. -
+Stormy: rainfall at or above my median wet-day amount (5.8 mm) AND wind at or above my 90th
+percentile (24.7 km/h), so it captures days that are both genuinely wet and in the windiest 10 %.
+Counts: Wet 277, Dry 433, Stormy 21. Stormiest date: 14 July 2024: Rainfall 35.5 mm, WindSpeed 29.3
+km/h, MaxTemp 11.2 °C. One day I disagree with: 11 March 2024, because it had my record rainfall of
+67.3 mm but only 6.5 km/h of wind, so it is labelled Wet even though rain that heavy would be a
+storm on its own. I would change the rule so that rainfall above my 99th percentile counts as Stormy
+regardless of wind.
 
-Counts: Wet ... , Dry ... , Stormy ... .
+----------------------------------------------------------------------------------------------------
 
-Stormiest date: ... — Rainfall ... mm, WindSpeed ... km/h, MaxTemp ... °C.
+Here's just some code for the results summary table for values that I haven't all ready outputted
+previously
 
-One day I disagree with: ... , because ... . I would change ...
+```{r misc}
+weather_data_orig$Date[which.max(weather_data_orig$MaxTemp)]; max(weather_data_orig$MaxTemp)
+round(cor(weather_data_orig$SoilMoisture, weather_data_orig$FireRiskIndex), 2)
+
+```
 
 ----------------------------------------------------------------------------------------------------
 
@@ -869,43 +972,57 @@ Fill in this table **manually** from your own output above. Rows 1-11 are checke
 against your student ID; row 12 is marked by inspection. Leave no cell blank; write `NA` and explain
 if you could not compute one.
 
-+----+------------------------------------------------------------------+--------------------+
-| \# | Quantity                                                         | Your value         |
-+====+==================================================================+====================+
-| 1  | Dataset fingerprint (from the setup chunk)                       | ```                |
-|    |                                                                  | WX-134679-6835-871 |
-|    |                                                                  | ```                |
-+----+------------------------------------------------------------------+--------------------+
-| 2  | Mean `Temperature` over the whole record (2 dp)                  | ```                |
-|    |                                                                  | 17.90              |
-|    |                                                                  | ```                |
-+----+------------------------------------------------------------------+--------------------+
-| 3  | Total `Rainfall` over the whole record (1 dp)                    | ```                |
-|    |                                                                  | 2512.4             |
-|    |                                                                  | ```                |
-+----+------------------------------------------------------------------+--------------------+
-| 4  | Number of days with `Rainfall == 0`                              | ```                |
-|    |                                                                  | 433                |
-|    |                                                                  | ```                |
-+----+------------------------------------------------------------------+--------------------+
-| 5  | Date of the highest `MaxTemp`, and that value                    |                    |
-+----+------------------------------------------------------------------+--------------------+
-| 6  | Season with the highest mean `Temperature`, and that mean (2 dp) |                    |
-+----+------------------------------------------------------------------+--------------------+
-| 7  | Number of days with `FireRiskIndex > 4` in `Burran`              |                    |
-+----+------------------------------------------------------------------+--------------------+
-| 8  | Length of the longest dry spell (Part C task 6)                  |                    |
-+----+------------------------------------------------------------------+--------------------+
-| 9  | Start date of the longest dry spell (earliest run, if tied)      |                    |
-+----+------------------------------------------------------------------+--------------------+
-| 10 | `cor(SoilMoisture, FireRiskIndex)` (2 dp)                        |                    |
-+----+------------------------------------------------------------------+--------------------+
-| 11 | Number of `"a"` days from Part B task 7                          | ```                |
-|    |                                                                  | 365                |
-|    |                                                                  | ```                |
-+----+------------------------------------------------------------------+--------------------+
-| 12 | Your two `classify_day()` quantile cut-points (D.4)              |                    |
-+----+------------------------------------------------------------------+--------------------+
++--------------------+------------------------------------+---------------------------------------------------------+
+| \#                 | Quantity                           | Your value                                              |
++====================+====================================+=========================================================+
+| 1                  | Dataset fingerprint (from the      | ```                                                     |
+|                    | setup chunk)                       | WX-134679-6835-871                                      |
+|                    |                                    | ```                                                     |
++--------------------+------------------------------------+---------------------------------------------------------+
+| 2                  | Mean `Temperature` over the whole  | ```                                                     |
+|                    | record (2 dp)                      | 17.90                                                   |
+|                    |                                    | ```                                                     |
++--------------------+------------------------------------+---------------------------------------------------------+
+| 3                  | Total `Rainfall` over the whole    | ```                                                     |
+|                    | record (1 dp)                      | 2512.4                                                  |
+|                    |                                    | ```                                                     |
++--------------------+------------------------------------+---------------------------------------------------------+
+| 4                  | Number of days with                | ```                                                     |
+|                    | `Rainfall == 0`                    | 433                                                     |
+|                    |                                    | ```                                                     |
++--------------------+------------------------------------+---------------------------------------------------------+
+| 5                  | Date of the highest `MaxTemp`, and | ```                                                     |
+|                    | that value                         | 2025-01-08, 37.4 °C                                     |
+|                    |                                    | ```                                                     |
++--------------------+------------------------------------+---------------------------------------------------------+
+| 6                  | Season with the highest mean       | ```                                                     |
+|                    | `Temperature`, and that mean (2    | Burran, 22.25 °C                                        |
+|                    | dp)                                | ```                                                     |
++--------------------+------------------------------------+---------------------------------------------------------+
+| 7                  | Number of days with                | ```                                                     |
+|                    | `FireRiskIndex > 4` in `Burran`    | 39                                                      |
+|                    |                                    | ```                                                     |
++--------------------+------------------------------------+---------------------------------------------------------+
+| 8                  | Length of the longest dry spell    | ```                                                     |
+|                    | (Part C task 6)                    | 15                                                      |
+|                    |                                    | ```                                                     |
++--------------------+------------------------------------+---------------------------------------------------------+
+| 9                  | Start date of the longest dry      | ```                                                     |
+|                    | spell (earliest run, if tied)      | 2025-05-28                                              |
+|                    |                                    | ```                                                     |
++--------------------+------------------------------------+---------------------------------------------------------+
+| 10                 | `cor(SoilMoisture, FireRiskIndex)` | ```                                                     |
+|                    | (2 dp)                             | -0.67                                                   |
+|                    |                                    | ```                                                     |
++--------------------+------------------------------------+---------------------------------------------------------+
+| 11                 | Number of `"a"` days from Part B   | ```                                                     |
+|                    | task 7                             | 365                                                     |
+|                    |                                    | ```                                                     |
++--------------------+------------------------------------+---------------------------------------------------------+
+| 12                 | Your two `classify_day()` quantile | ```                                                     |
+|                    | cut-points (D.4)                   | 13.2 °C (20th percentile) and 22.6 °C (80th percentile) |
+|                    |                                    | ```                                                     |
++--------------------+------------------------------------+---------------------------------------------------------+
 
 ## Reproducibility appendix
 
@@ -921,22 +1038,94 @@ print(sessionInfo()$R.version$version.string)
 
 ## Declaration
 
-```{asis, echo=TRUE}
+I confirm that the dataset analysed in this submission was generated from my own student ID, that
+the values reported in the Results Summary Table are the values produced by the code in this
+document, and that all explanations and interpretations are my own work.
 
-I confirm that the dataset analysed in this submission was generated from my own student ID,
-that the values reported in the Results Summary Table are the values produced by the code in
-this document, and that all explanations and interpretations are my own work.
-
-Signed: Ruhan Shafi   Date: 28th of September, 2026
-
-```
+Signed: Ruhan Shafi Date: 29 September 2026
 
 ----------------------------------------------------------------------------------------------------
 
 # Overall Conclusion
 
-```{asis, echo=TRUE}
-
 Your overall reflection about this assignment goes here ...
 
-```
+## Findings
+
+My dataset behaves like a coastal temperate climate: a mean temperature of 17.90 °C with a clear
+annual cycle (monthly means from 10.86 °C in August 2025 to 23.67 °C in January 2025), and 2512.4 mm
+of rain concentrated on only 41 % of days, which makes Rainfall by far the most variable variable
+(SD/mean 1.97). Soil moisture behaves as a lagged store rather than a mirror of rainfall: December
+received almost as much rain as July (313.4 mm vs 315.9 mm) yet held less than half the soil
+moisture (16.6 % vs 37.8 %) because of summer evapotranspiration. Fire danger followed hot days and
+dry soil, so Burran recorded 39 high-risk days against only 3 in Burrugin. Burran fitted the "hot"
+half of Gadalung Marool but not the "dry" half, a reminder that a synthetic record calibrated to a
+climate cannot test Knowledge that is grounded in ecological indicators.
+
+## Challenges
+
+### Challenge 1: The `TempFlag` error
+
+My first challenge came from the difference between working in the console and knitting the
+document. While writing my Part A answers, I ran `summary(weather_data)` in the console after I had
+already completed Part B, and the output included an extra `TempFlag` column that the Part A
+questions knew nothing about. At first this was confusing, because the dataset is meant to have 16
+columns. The cause was that my console session had kept the column created by `above_below()` in
+B.7, so the object I was summarising was no longer the dataset as generated.
+
+This showed me that R objects change as the analysis progresses, and that running chunks out of
+order gives results the knitted document will not reproduce. It also explained why the assignment
+insists that the fingerprint is computed from `weather_data_orig`: once I add columns such as
+`TempFlag` to `weather_data`, any calculation over every numeric column would change, and the
+marker's regenerated dataset would no longer match mine. To stop this happening again, I treated the
+knitted output as the only authoritative record, re-knitting from a clean session rather than
+trusting values left over in the console.
+
+### Challenge 2: Recognising when my conclusions were wrong
+
+My second and more significant challenge was recognising when a conclusion I had reached was wrong,
+whether from incorrect intuition, an error in logic, or jumping to an answer before checking the
+evidence. In each case the conclusion felt reasonable, so the mistake was not obvious until I
+compared it with a number in my own output.
+
+The clearest case of incorrect intuition was my D.2 prediction. I predicted a large proportion of
+dry days because I believed Sydney has a primarily dry climate. The proportion of dry days was
+indeed high (0.592), but my reasoning was wrong: my own data recorded about 1,256 mm of rain per
+year, which is consistent with a fairly wet coastal city. The dry days come from the generator's
+two-state Markov chain, which produces rain in spells separated by long dry runs, not from low
+annual rainfall. Getting the right answer for the wrong reason taught me that a correct prediction
+does not prove my understanding was correct.
+
+An error in logic appeared in B.7, where I first explained that the number of "a" days (365) was not
+exactly half of 731 because 2024 was a leap year. On reflection, this does not hold: the leap year
+only determines how many days are in the record, and has no bearing on whether a day is above or
+below its month's mean. The real reason is that each day is compared with its monthly mean rather
+than its median, so a month only splits evenly when its temperatures are symmetric. My monthly
+proportions, ranging from 0.400 in 2024-06 to 0.645 in 2024-01, show this directly. My first
+explanation described a true fact about the data that simply did not cause the result.
+
+I also jumped to conclusions before doing the research. In A.4, knowing that soil moisture lags
+rainfall in the bucket model, I expected the season with the highest mean SoilMoisture to differ
+from the season with the highest mean Rainfall, and began explaining the mechanism that would
+separate them. My output showed that Wiritjiribin led both (33.16 % and 3.88 mm per day), so I had
+to change my answer to explain why they coincided.
+
+Together, these experiences changed how I approached the rest of the assignment. Instead of writing
+an explanation and then looking for numbers to support it, I began checking the output first and
+only then explaining what it showed. When a result surprised me, I treated that as a sign that my
+understanding needed revising rather than as a mistake in the data.
+
+## Reflection
+
+The biggest lesson that I learnt from this assessment came from learning to recognising my own wrong
+conclusions. My D.2 prediction showed that reaching the right answer does not mean my reasoning was
+right, and my first B.7 explanation showed that a true fact (the leap year) can still be the wrong
+cause. Jumping ahead in A.4 and D.6 showed that an explanation written before checking the evidence
+tends to fit what I expected rather than what the data show. Going forward, I will write down my
+expectations before running code, let the printed output lead the explanation, and treat a
+surprising result as a sign that my understanding needs revising rather than as an error in the
+data.
+
+Finally, I am more aware of the limits of a dataset. However realistic a synthetic record is, it
+cannot be used to test Knowledge that is grounded in observation from real world data, and
+recognising what data can and cannot support is as important as analysing it correctly.
