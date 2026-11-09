@@ -1,0 +1,1949 @@
+---
+title: "Final Assessment — Introduction to Data Science"
+subtitle: "11372 & 11516"
+date: "`r format(Sys.Date(), '%d %B %Y')`"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+    number_sections: false
+  html_document:
+    toc: true
+    toc_float: true
+    theme: readable
+params:
+  studentID: "u3284342"
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+```{=html}
+<!--
+=============================================================================
+  HOW TO USE THIS TEMPLATE
+
+  1. Put your real student ID in the YAML header above, replacing uXXXXXXX.
+  2. Run the setup chunk below once. It creates your personal data in data/.
+  3. Work down the file. Write your code in the empty chunks and your
+     answers in the places marked "YOUR ANSWER".
+  4. Knit to PDF/HTML and submit this .Rmd together with the PDF/HTML.
+  5. Feel free to do changes in the template as needed.
+
+  Keep the Assignment Brief open beside this file — it has the full wording
+  of every question. The one-line prompts here are reminders, not the
+  complete question.
+
+  If knitting to PDF/HTML fails because LaTeX is missing, run this once in the
+  console:   install.packages("tinytex"); tinytex::install_tinytex()
+=============================================================================
+-->
+```
+
+```{r setup, include=TRUE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+## --------------------------------------------------------------------------
+##  DO NOT EDIT personalise.R. Run this chunk once to build your dataset.
+## --------------------------------------------------------------------------
+source("personalise.R")
+
+my <- make_my_dataset(params$studentID,
+                      raw_dir = "data_raw",
+                      out_dir = "data")
+```
+
+```{r libraries}
+# Packages used in this report. Install once with:
+# install.packages(c("tidyverse", "lubridate", "scales", "knitr",
+#                    "glmnet", "rpart"))
+library(tidyverse)  # dplyr, tidyr, readr, stringr, forcats, ggplot2
+library(lubridate)  # robust parsing of the inconsistent Year formats
+library(scales)     # comma and log-scale axis labels
+library(knitr)      # kable() tables
+library(glmnet)     # ridge and lasso regression (Task 3.8)
+library(rpart)      # regression tree (Task 3.8)
+
+theme_set(theme_minimal(base_size = 11))
+```
+
+```{r helpers}
+# Helper functions used throughout Task 1. Function names follow Google's
+# R Style Guide (BigCamelCase); objects use snake_case.
+
+# Convert text to numbers, tolerating thousands separators, currency
+# symbols, stray spaces and the Unicode minus sign. Anything that still is
+# not a number becomes NA, so it can be counted as a defect.
+ToNumber <- function(x) {
+  x <- str_replace_all(as.character(x), "−", "-")
+  x <- str_remove_all(x, "[,$\\s]")
+  suppressWarnings(as.numeric(x))
+}
+
+# Label each Year value by its format, so the variants can be reported.
+ClassifyYearFormat <- function(x) {
+  x <- str_trim(as.character(x))
+  case_when(
+    is.na(x) | x == "" ~ "missing",
+    str_detect(x, "^\\d{4}$") ~ "YYYY",
+    str_detect(x, "^\\d{4}\\.0+$") ~ "YYYY.0 (decimal)",
+    str_detect(x, "^\\d{4}-\\d{1,2}-\\d{1,2}") ~ "ISO date (YYYY-MM-DD)",
+    str_detect(x, "^\\d{1,2}[/.-]\\d{1,2}[/.-]\\d{4}$") ~ "D/M/YYYY date",
+    str_detect(x, "^\\d{5}$") ~ "Excel serial number",
+    str_detect(x, "^'?\\d{2}$") ~ "two-digit year",
+    str_detect(x, "[A-Za-z]") & str_detect(x, "\\d{4}") ~ "text + year",
+    TRUE ~ "other"
+  )
+}
+
+# Convert every Year variant to a four-digit integer year.
+ParseYear <- function(x) {
+  x <- str_trim(as.character(x))
+  fmt <- ClassifyYearFormat(x)
+  out <- rep(NA_integer_, length(x))
+
+  idx <- fmt %in% c("YYYY", "YYYY.0 (decimal)", "ISO date (YYYY-MM-DD)")
+  out[idx] <- as.integer(str_sub(x[idx], 1, 4))
+
+  idx <- fmt == "D/M/YYYY date"
+  out[idx] <- year(parse_date_time(x[idx], orders = c("dmy", "mdy")))
+
+  idx <- fmt == "Excel serial number"
+  out[idx] <- year(as_date(as.numeric(x[idx]), origin = "1899-12-30"))
+
+  idx <- fmt == "two-digit year"
+  yy <- as.integer(str_remove(x[idx], "'"))
+  out[idx] <- if_else(yy > 50L, 1900L + yy, 2000L + yy)
+
+  idx <- fmt == "text + year"
+  out[idx] <- as.integer(str_extract(x[idx], "(19|20)\\d{2}"))
+
+  idx <- fmt == "other"
+  out[idx] <- year(parse_date_time(x[idx],
+                                   orders = c("Ymd", "dmY", "mdY", "bY")))
+  out
+}
+
+# Normalise country names so the same country matches across files
+# (case, accents, punctuation, "&", leading "The").
+NormaliseName <- function(x) {
+  x %>%
+    iconv(to = "ASCII//TRANSLIT", sub = "") %>%
+    str_to_lower() %>%
+    str_replace_all("&", "and") %>%
+    str_remove_all("[^a-z0-9 ]") %>%
+    str_remove("^the ") %>%
+    str_squish()
+}
+
+# Known spelling variants (normalised alias = normalised canonical name).
+# DECISION: extend this list with any names printed as "Unmatched name -
+# review" in Task 1.2.
+name_fixes <- c(
+  "united states of america" = "united states",
+  "usa" = "united states",
+  "us" = "united states",
+  "russian federation" = "russia",
+  "korea rep" = "south korea",
+  "republic of korea" = "south korea",
+  "viet nam" = "vietnam",
+  "czech republic" = "czechia",
+  "turkiye" = "turkey",
+  "iran islamic rep" = "iran",
+  "egypt arab rep" = "egypt",
+  "uk" = "united kingdom",
+  "slovak republic" = "slovakia",
+  "kyrgyz republic" = "kyrgyzstan",
+  "lao pdr" = "laos",
+  "dr congo" = "democratic republic of congo",
+  "congo dem rep" = "democratic republic of congo",
+  "congo rep" = "congo",
+  "ivory coast" = "cote divoire",
+  "burma" = "myanmar",
+  "syrian arab republic" = "syria",
+  "venezuela bolivarian republic of" = "venezuela"
+)
+
+ApplyNameFixes <- function(key) {
+  if_else(key %in% names(name_fixes), unname(name_fixes[key]), key)
+}
+
+# Linear interpolation within one country's series. End gaps take the
+# nearest observed value (rule = 2). A series with a single observation is
+# filled with that value; an all-NA series is returned unchanged.
+InterpolateWithin <- function(year, value) {
+  ok <- !is.na(value)
+  if (sum(ok) == 0) return(value)
+  if (sum(ok) == 1) return(replace(value, !ok, value[ok]))
+  approx(year[ok], value[ok], xout = year, rule = 2)$y
+}
+
+# Flag values more than `multiple` times above (or below) the country's
+# own median: the signature of a unit or keying error (e.g. x1000).
+FlagSpikes <- function(value, multiple = 10) {
+  med <- median(value[value > 0], na.rm = TRUE)
+  if (is.na(med)) return(rep(FALSE, length(value)))
+  high <- value > multiple * med
+  low <- med > 1 & value > 0 & value < med / multiple
+  replace(high | low, is.na(high | low), FALSE)
+}
+
+# Most frequent non-missing value (NA if there is none).
+ModeValue <- function(x) {
+  counts <- table(x)
+  if (length(counts) == 0) return(NA_character_)
+  names(sort(counts, decreasing = TRUE))[1]
+}
+
+# A readable "Country Year" label for example rows in the audit table.
+LabelRows <- function(df) {
+  id <- if ("Country" %in% names(df)) df$Country else df$ISO
+  if ("Year" %in% names(df)) paste(id, df$Year) else as.character(id)
+}
+
+# Defect log: every detection step below appends a row, which becomes the
+# Data Quality Audit table in Task 1A.
+defect_log <- tibble(
+  File = character(), Column = character(), Rows = integer(),
+  Example = character(), Detection = character(), Handling = character()
+)
+
+LogDefect <- function(log, file, column, rows_df, detection, handling) {
+  examples <- if (nrow(rows_df) == 0) "-" else
+    paste(head(unique(LabelRows(rows_df)), 2), collapse = "; ")
+  add_row(log, File = file, Column = column, Rows = nrow(rows_df),
+          Example = examples, Detection = detection, Handling = handling)
+}
+
+# Codes sometimes used for "missing" in place of NA.
+sentinel_values <- c(-999, -9999, -99999, 99999, 999999)
+
+# Model evaluation metrics (Task 3).
+Rmse <- function(actual, predicted) sqrt(mean((actual - predicted)^2))
+RSquared <- function(actual, predicted) {
+  1 - sum((actual - predicted)^2) / sum((actual - mean(actual))^2)
+}
+```
+
+\newpage
+
+# Introduction
+
+*Briefly introduce the dataset, the questions you set out to answer, and
+how this report is organised. Half a page is plenty.*
+
+**YOUR ANSWER**
+
+## Assumptions
+
+*State any assumptions you are making about the data or the analysis
+before you begin.*
+
+**YOUR ANSWER**
+
+\newpage
+
+# Task 1: Data preparation and wrangling
+
+### 1.1 Import the four CSV files
+
+```{r t1q1}
+# Everything is read as text first. Numbers stored as text, odd Year
+# formats and stray whitespace would otherwise be coerced silently, and the
+# defects would be lost before they could be counted.
+ReadRaw <- function(path) {
+  read_csv(path, col_types = cols(.default = col_character()),
+           na = c("", "NA"), trim_ws = FALSE)
+}
+
+emissions_raw   <- ReadRaw("data/Emissions.csv")
+renewables_raw  <- ReadRaw("data/Renewables.csv")
+consumption_raw <- ReadRaw("data/Consumption.csv")
+countries_raw   <- ReadRaw("data/Countries.csv")
+
+raw_files <- list(Emissions = emissions_raw, Renewables = renewables_raw,
+                  Consumption = consumption_raw, Countries = countries_raw)
+
+tibble(File = names(raw_files),
+       Rows = map_int(raw_files, nrow),
+       Columns = map_int(raw_files, ncol),
+       ColumnNames = map_chr(raw_files, ~ paste(head(names(.x), 6),
+                                                collapse = ", "))) %>%
+  kable(caption = "Raw files as imported")
+```
+
+### 1.2 Reshape `Renewables.csv` to one row per country per year
+
+*Remember: this file contains rows that are not countries.*
+
+```{r t1q2}
+# Year columns are any whose name contains a four-digit number
+# (e.g. "2010", "X2010"); the remaining column(s) identify the row.
+year_cols <- names(renewables_raw)[str_detect(names(renewables_raw),
+                                              "\\d{4}")]
+id_cols <- setdiff(names(renewables_raw), year_cols)
+cat("Identifier column(s):", paste(id_cols, collapse = ", "), "\n")
+cat("Year columns:", length(year_cols), "\n")
+
+# Wide -> long: one row per country per year. Year stays as text here and
+# is standardised in 1.4 together with the other files.
+renewables_long <- renewables_raw %>%
+  rename(Country = all_of(id_cols[1])) %>%
+  pivot_longer(all_of(year_cols), names_to = "Year",
+               values_to = "Renewables") %>%
+  mutate(Country = str_squish(Country),
+         NameKey = ApplyNameFixes(NormaliseName(Country)))
+
+# Renewables.csv has no ISO code, so names are mapped to ISO codes using
+# the names in Emissions.csv and Countries.csv.
+name_lookup <- bind_rows(
+  emissions_raw %>%
+    transmute(ISO = str_to_upper(str_trim(iso_code)), Name = location),
+  countries_raw %>%
+    transmute(ISO = str_to_upper(str_trim(countryCode)), Name = Country)
+) %>%
+  filter(str_detect(ISO, "^[A-Z]{3}$")) %>%
+  mutate(NameKey = ApplyNameFixes(NormaliseName(Name))) %>%
+  distinct(NameKey, .keep_all = TRUE) %>%
+  select(NameKey, ISO)
+
+renewables_long <- renewables_long %>%
+  left_join(name_lookup, by = "NameKey")
+
+# Rows whose name matches no country are either aggregates (World,
+# continents, income groups, "(EI)"-style source regions) or spelling
+# variants that still need adding to name_fixes.
+aggregate_pattern <- paste0(
+  "world|income|oecd|union|\\(|total|other|non-|^africa|^asia|^europe|",
+  "america|oceania|middle east|cis|ussr|g20|g7|opec|pacific|caribbean|",
+  "eurasia|region"
+)
+
+renew_non_country <- renewables_long %>%
+  filter(is.na(ISO)) %>%
+  distinct(Country) %>%
+  mutate(Type = if_else(str_detect(str_to_lower(Country), aggregate_pattern),
+                        "Aggregate / region",
+                        "Unmatched name - review"))
+
+kable(count(renew_non_country, Type),
+      caption = "Renewables.csv rows that are not countries")
+print(renew_non_country, n = Inf)
+
+defect_log <- LogDefect(
+  defect_log, "Renewables.csv", "Country",
+  renewables_long %>% filter(is.na(ISO)),
+  paste("Names with no match in the Emissions/Countries name lookup",
+        "after normalisation; classified by keyword"),
+  "Removed (aggregates double-count countries already in the data)"
+)
+
+# DECISION: drop every row that does not map to a country ISO code.
+renewables_long <- renewables_long %>%
+  filter(!is.na(ISO)) %>%
+  select(ISO, Country, Year, Renewables)
+```
+
+*What did you do with the non-country rows, and why?*
+
+Renewables.csv identifies each row by name only (\`Country.Region\`),
+with one column per year from 2004 to 2023. After pivoting it to one row
+per country per year, I mapped each name to an ISO code using the
+country names in Emissions.csv and Countries.csv. Names were normalised
+(case, accents, punctuation) and known spelling variants were corrected
+first, such as "United States of America" for "United States". Every row
+matched a country except two: "World" and "European Union (27)".
+
+I removed both rows, which is 40 country-year observations (2 rows × 20
+years). They are not countries but aggregates: "World" is the sum of
+every country's generation, and "European Union (27)" is the sum of its
+27 member states, several of which (e.g. France, Germany, Italy) already
+appear as individual rows. Keeping them would break the
+one-country-per-year structure of the master data frame. They would also
+double-count renewable generation when totals are summed across
+countries in Task 2. They also have no ISO code, so they could not be
+joined to Emissions.csv.
+
+### 1.3 Rename the columns
+
+```{r t1q3}
+emissions <- emissions_raw %>%
+  rename(ISO = iso_code, Country = location, Region = region,
+         Year = year, CO2 = annual_co2_mt, OilCO2 = annual_oil_co2_mt)
+
+consumption <- consumption_raw %>%
+  rename(ISO = `Country Code`, ConsCO2 = `Consumption CO2`)
+
+countries <- countries_raw %>%
+  rename(ISO = countryCode, Population = popData2022,
+         GDPCapita = `GDP/capita`)
+
+# --- Type conversion, with defect detection before each change ----------
+
+# ISO codes with whitespace or lower case break joins silently.
+for (name in c("emissions", "consumption", "countries")) {
+  df <- get(name)
+  bad_iso <- df %>%
+    filter(!is.na(ISO), !str_detect(ISO, "^[A-Z]{3}$"),
+           str_detect(str_to_upper(str_trim(ISO)), "^[A-Z]{3}$"))
+  file <- paste0(str_to_title(name), ".csv")
+  defect_log <- LogDefect(
+    defect_log, file, "ISO", bad_iso,
+    "Regex ^[A-Z]{3}$ failed but passed after str_trim()/str_to_upper()",
+    "Trimmed and upper-cased"
+  )
+}
+
+# Values that are present but not numeric (e.g. "n/a", "unknown").
+numeric_targets <- list(
+  list("emissions", "Emissions.csv", c("CO2", "OilCO2")),
+  list("consumption", "Consumption.csv", "ConsCO2"),
+  list("countries", "Countries.csv", c("Population", "GDP", "GDPCapita")),
+  list("renewables_long", "Renewables.csv", "Renewables")
+)
+
+for (target in numeric_targets) {
+  df <- get(target[[1]])
+  for (col in target[[3]]) {
+    non_numeric <- df[!is.na(df[[col]]) & is.na(ToNumber(df[[col]])), ]
+    defect_log <- LogDefect(
+      defect_log, target[[2]], col, non_numeric,
+      "Non-missing text that ToNumber() could not convert to a number",
+      "Set to NA, then treated in Task 1.6"
+    )
+  }
+}
+
+# Numbers written with thousands separators (e.g. "9,443.433") are read
+# as text; ToNumber() repairs them, but they are a formatting defect.
+for (target in numeric_targets) {
+  df <- get(target[[1]])
+  for (col in target[[3]]) {
+    comma_rows <- df[!is.na(df[[col]]) & str_detect(df[[col]], ","), ]
+    defect_log <- LogDefect(
+      defect_log, target[[2]], col, comma_rows,
+      "str_detect(value, \",\"): thousands separator stored as text",
+      "Separator removed by ToNumber() before conversion"
+    )
+  }
+}
+
+# Region labels with inconsistent spacing or case.
+region_variants <- emissions %>%
+  filter(!is.na(Region), Region != str_to_title(str_squish(Region)))
+defect_log <- LogDefect(
+  defect_log, "Emissions.csv", "Region", region_variants,
+  "table(Region) showed the same continent spelt in more than one way",
+  "str_squish() + str_to_title(), then each country's most common label"
+)
+
+# Now convert.
+emissions <- emissions %>%
+  mutate(ISO = str_to_upper(str_trim(ISO)),
+         Country = str_squish(Country),
+         Region = str_to_title(str_squish(Region)),
+         across(c(CO2, OilCO2), ToNumber))
+
+consumption <- consumption %>%
+  mutate(ISO = str_to_upper(str_trim(ISO)), ConsCO2 = ToNumber(ConsCO2))
+
+countries <- countries %>%
+  mutate(ISO = str_to_upper(str_trim(ISO)),
+         Country = str_squish(Country),
+         across(c(Population, GDP, GDPCapita), ToNumber))
+
+renewables_long <- renewables_long %>%
+  mutate(Renewables = ToNumber(Renewables))
+
+map(list(Emissions = emissions, Consumption = consumption,
+         Countries = countries, Renewables = renewables_long), names)
+```
+
+### 1.4 Make `Year` consistent across all data frames
+
+```{r t1q4}
+# Detection: which Year formats appear in each file?
+year_formats <- bind_rows(
+  tibble(File = "Emissions.csv", Format = ClassifyYearFormat(emissions$Year)),
+  tibble(File = "Consumption.csv",
+         Format = ClassifyYearFormat(consumption$Year)),
+  tibble(File = "Renewables.csv (column names)",
+         Format = ClassifyYearFormat(renewables_long$Year))
+)
+year_formats %>%
+  count(File, Format) %>%
+  kable(caption = "Year formats found in each file")
+
+for (name in c("emissions", "consumption")) {
+  df <- get(name)
+  odd <- df %>% filter(ClassifyYearFormat(Year) != "YYYY")
+  defect_log <- LogDefect(
+    defect_log, paste0(str_to_title(name), ".csv"), "Year", odd,
+    "ClassifyYearFormat() found values not in plain YYYY form",
+    "Converted to integer year with ParseYear() (lubridate for dates)"
+  )
+}
+
+# Convert every Year to the same type: a four-digit integer.
+emissions <- emissions %>% mutate(Year = ParseYear(Year))
+consumption <- consumption %>% mutate(Year = ParseYear(Year))
+renewables_long <- renewables_long %>% mutate(Year = ParseYear(Year))
+
+# Check: same class everywhere, and no values that failed to parse.
+tibble(
+  Frame = c("emissions", "consumption", "renewables_long"),
+  Class = c(class(emissions$Year), class(consumption$Year),
+            class(renewables_long$Year)),
+  Unparsed = c(sum(is.na(emissions$Year)), sum(is.na(consumption$Year)),
+               sum(is.na(renewables_long$Year))),
+  Range = c(paste(range(emissions$Year, na.rm = TRUE), collapse = "-"),
+            paste(range(consumption$Year, na.rm = TRUE), collapse = "-"),
+            paste(range(renewables_long$Year, na.rm = TRUE),
+                  collapse = "-"))
+) %>%
+  kable(caption = "Year after standardisation")
+
+# Rows whose Year could not be recovered cannot be placed in time.
+emissions <- filter(emissions, !is.na(Year))
+consumption <- filter(consumption, !is.na(Year))
+renewables_long <- filter(renewables_long, !is.na(Year))
+```
+
+### 1.4b Remove non-country rows, duplicates and impossible values
+
+```{r t1-clean}
+# --- Emissions.csv (the master panel) ------------------------------------
+n_emissions_raw <- nrow(emissions)
+
+# 1. Non-country rows (aggregates have codes such as OWID_WRL or no code).
+emissions_non_country <- emissions %>%
+  filter(is.na(ISO) | !str_detect(ISO, "^[A-Z]{3}$"))
+defect_log <- LogDefect(
+  defect_log, "Emissions.csv", "ISO", emissions_non_country,
+  "ISO missing or not three letters (aggregate rows such as OWID_*)",
+  "Removed so totals are not double-counted"
+)
+emissions <- anti_join(emissions, emissions_non_country,
+                       by = names(emissions))
+
+# 2. Exact duplicate rows.
+n_dup_exact <- nrow(emissions) - nrow(distinct(emissions))
+dup_exact_rows <- emissions[duplicated(emissions), ]
+emissions <- distinct(emissions)
+
+# 3. Same country and year recorded twice with different values.
+dup_key_rows <- emissions %>%
+  group_by(ISO, Year) %>%
+  filter(n() > 1) %>%
+  ungroup()
+emissions <- emissions %>%
+  arrange(ISO, Year, is.na(CO2)) %>%   # keep the non-missing copy first
+  distinct(ISO, Year, .keep_all = TRUE)
+n_dup_key <- nrow(dup_key_rows) - n_distinct(dup_key_rows[c("ISO", "Year")])
+n_dup_removed <- n_dup_exact + n_dup_key
+
+defect_log <- LogDefect(
+  defect_log, "Emissions.csv", "(whole row)", dup_exact_rows,
+  "duplicated() on all columns", "Removed with distinct()"
+)
+defect_log <- LogDefect(
+  defect_log, "Emissions.csv", "ISO + Year", dup_key_rows,
+  "group_by(ISO, Year) with n() > 1 after exact duplicates removed",
+  "Kept the first non-missing record per country-year"
+)
+cat("Duplicate rows removed:", n_dup_removed,
+    "(exact:", n_dup_exact, "| same key:", n_dup_key, ")\n")
+
+# 4. Years outside this student's data window (keying errors).
+window_years <- range(as.integer(my$window))
+out_of_window <- emissions %>%
+  filter(Year < window_years[1] | Year > window_years[2])
+defect_log <- LogDefect(
+  defect_log, "Emissions.csv", "Year", out_of_window,
+  paste0("Year outside the personalised window ",
+         window_years[1], "-", window_years[2]),
+  "Removed"
+)
+emissions <- anti_join(emissions, out_of_window, by = c("ISO", "Year"))
+
+# 5. One consistent name and region per country (most common label).
+inconsistent_labels <- emissions %>%
+  group_by(ISO) %>%
+  filter(n_distinct(Country) > 1 | n_distinct(Region, na.rm = TRUE) > 1 |
+           any(is.na(Region))) %>%
+  ungroup()
+defect_log <- LogDefect(
+  defect_log, "Emissions.csv", "Country / Region", inconsistent_labels,
+  "group_by(ISO) with n_distinct(Country/Region) > 1 or missing Region",
+  "Replaced with that country's most frequent label"
+)
+emissions <- emissions %>%
+  group_by(ISO) %>%
+  mutate(
+    Country = ModeValue(Country),
+    Region = ModeValue(Region)
+  ) %>%
+  ungroup()
+
+# Keep an untouched copy of the values for the audit (1A).
+emissions_before_fix <- emissions
+
+# 6. Missing-value codes such as -999.
+sentinel_rows <- emissions %>%
+  filter(CO2 %in% sentinel_values | OilCO2 %in% sentinel_values)
+defect_log <- LogDefect(
+  defect_log, "Emissions.csv", "CO2 / OilCO2", sentinel_rows,
+  "Exact matches to codes like -999 / 99999",
+  "Treated as missing (NA), interpolated in Task 1.6"
+)
+emissions <- emissions %>%
+  mutate(across(c(CO2, OilCO2), ~ if_else(.x %in% sentinel_values,
+                                          NA_real_, .x)))
+
+# 7. Negative annual emissions (Task 1A ii).
+negative_rows <- emissions %>%
+  filter(CO2 < 0) %>%
+  select(ISO, Country, Year, CO2)
+defect_log <- LogDefect(
+  defect_log, "Emissions.csv", "CO2", negative_rows,
+  "summary(CO2) showed a negative minimum; filter(CO2 < 0)",
+  "Set to NA and interpolated from neighbouring years (Task 1.6)"
+)
+neg_oil <- emissions %>% filter(OilCO2 < 0)
+defect_log <- LogDefect(
+  defect_log, "Emissions.csv", "OilCO2", neg_oil,
+  "filter(OilCO2 < 0)", "Set to NA and interpolated (Task 1.6)"
+)
+# DECISION: negative values become NA and are interpolated, not set to 0.
+emissions <- emissions %>%
+  mutate(CO2 = if_else(CO2 < 0, NA_real_, CO2),
+         OilCO2 = if_else(OilCO2 < 0, NA_real_, OilCO2))
+
+# 8. Spikes: a value 10x away from the country's own median.
+emissions <- emissions %>%
+  group_by(ISO) %>%
+  mutate(CO2Spike = FlagSpikes(CO2), OilSpike = FlagSpikes(OilCO2)) %>%
+  ungroup()
+spike_rows <- emissions %>% filter(CO2Spike | OilSpike)
+defect_log <- LogDefect(
+  defect_log, "Emissions.csv", "CO2 / OilCO2", spike_rows,
+  "Value more than 10x above/below the country's own median (FlagSpikes)",
+  "Set to NA and interpolated (likely unit or keying error)"
+)
+emissions <- emissions %>%
+  mutate(CO2 = if_else(CO2Spike, NA_real_, CO2),
+         OilCO2 = if_else(OilSpike, NA_real_, OilCO2)) %>%
+  select(-CO2Spike, -OilSpike)
+
+# 9. Oil emissions larger than total emissions (logically impossible).
+oil_gt_total <- emissions %>% filter(OilCO2 > CO2)
+defect_log <- LogDefect(
+  defect_log, "Emissions.csv", "OilCO2", oil_gt_total,
+  "filter(OilCO2 > CO2): a component cannot exceed its total",
+  "OilCO2 set to NA and interpolated"
+)
+emissions <- emissions %>%
+  mutate(OilCO2 = if_else(!is.na(CO2) & OilCO2 > CO2, NA_real_, OilCO2))
+
+# 10. Missing years inside a country's record (reported, not filled).
+year_gaps <- emissions %>%
+  group_by(ISO, Country) %>%
+  summarise(YearsPresent = n(),
+            YearsExpected = max(Year) - min(Year) + 1, .groups = "drop") %>%
+  filter(YearsPresent < YearsExpected)
+cat("Countries with missing years inside their record:", nrow(year_gaps),
+    "\n")
+
+# --- Consumption.csv -----------------------------------------------------
+cons_dups <- consumption %>% group_by(ISO, Year) %>% filter(n() > 1) %>%
+  ungroup()
+defect_log <- LogDefect(
+  defect_log, "Consumption.csv", "ISO + Year", cons_dups,
+  "group_by(ISO, Year) with n() > 1", "Kept first non-missing record"
+)
+consumption <- consumption %>%
+  arrange(ISO, Year, is.na(ConsCO2)) %>%
+  distinct(ISO, Year, .keep_all = TRUE)
+
+cons_bad <- consumption %>%
+  filter(ConsCO2 %in% sentinel_values | ConsCO2 < 0)
+defect_log <- LogDefect(
+  defect_log, "Consumption.csv", "ConsCO2", cons_bad,
+  "Missing-value codes or negative values (filter(ConsCO2 < 0))",
+  "Set to NA and interpolated (Task 1.6)"
+)
+consumption <- consumption %>%
+  mutate(ConsCO2 = if_else(ConsCO2 %in% sentinel_values | ConsCO2 < 0,
+                           NA_real_, ConsCO2)) %>%
+  group_by(ISO) %>%
+  mutate(Spike = FlagSpikes(ConsCO2)) %>%
+  ungroup()
+defect_log <- LogDefect(
+  defect_log, "Consumption.csv", "ConsCO2", filter(consumption, Spike),
+  "Value more than 10x from the country's own median (FlagSpikes)",
+  "Set to NA and interpolated"
+)
+consumption <- consumption %>%
+  mutate(ConsCO2 = if_else(Spike, NA_real_, ConsCO2)) %>%
+  select(-Spike)
+
+# --- Countries.csv -------------------------------------------------------
+ctry_dups <- countries %>% group_by(ISO) %>% filter(n() > 1) %>% ungroup()
+defect_log <- LogDefect(
+  defect_log, "Countries.csv", "ISO", ctry_dups,
+  "group_by(ISO) with n() > 1 in a one-row-per-country table",
+  "Kept the most complete record"
+)
+countries <- countries %>%
+  arrange(ISO, is.na(Population) + is.na(GDP) + is.na(GDPCapita)) %>%
+  distinct(ISO, .keep_all = TRUE)
+
+ctry_bad <- countries %>%
+  filter(Population <= 0 | GDP <= 0 | GDPCapita <= 0 |
+           Population %in% sentinel_values | GDP %in% sentinel_values)
+defect_log <- LogDefect(
+  defect_log, "Countries.csv", "Population / GDP / GDPCapita", ctry_bad,
+  "summary() showed zero/negative minima or missing-value codes",
+  "Set to NA, then derived or imputed in Task 1.6"
+)
+countries <- countries %>%
+  mutate(across(c(Population, GDP, GDPCapita),
+                ~ if_else(.x <= 0 | .x %in% sentinel_values,
+                          NA_real_, .x)))
+
+# The three columns are linked: GDP (millions) * 1e6 / Population should
+# reproduce GDPCapita. When they disagree, the population implied by GDP
+# and GDPCapita shows whether Population is the value that is wrong.
+ctry_inconsistent <- countries %>%
+  mutate(ImpliedPopulation = GDP * 1e6 / GDPCapita,
+         Ratio = Population / ImpliedPopulation) %>%
+  filter(!is.na(Ratio), abs(Ratio - 1) > 0.05)
+print(select(ctry_inconsistent, ISO, Country, Population, GDP, GDPCapita,
+             ImpliedPopulation, Ratio))
+defect_log <- LogDefect(
+  defect_log, "Countries.csv", "Population", ctry_inconsistent,
+  paste("Population differs >5% from GDP * 1e6 / GDPCapita",
+        "(ratio printed above)"),
+  "Replaced with the population implied by GDP and GDPCapita"
+)
+# DECISION: GDP and GDPCapita agree with each other, so Population is the
+# inconsistent value; replace it with the implied population.
+countries <- countries %>%
+  mutate(Population = if_else(ISO %in% ctry_inconsistent$ISO,
+                              round(GDP * 1e6 / GDPCapita), Population))
+
+# --- Renewables ----------------------------------------------------------
+renew_dups <- renewables_long %>% group_by(ISO, Year) %>%
+  filter(n() > 1) %>% ungroup()
+defect_log <- LogDefect(
+  defect_log, "Renewables.csv", "Country + Year", renew_dups,
+  "Two name variants mapped to the same ISO and year",
+  "Kept the first non-missing value"
+)
+renewables_long <- renewables_long %>%
+  arrange(ISO, Year, is.na(Renewables)) %>%
+  distinct(ISO, Year, .keep_all = TRUE)
+
+renew_bad <- renewables_long %>%
+  filter(Renewables < 0 | Renewables %in% sentinel_values)
+defect_log <- LogDefect(
+  defect_log, "Renewables.csv", "Renewables", renew_bad,
+  "Negative generation or missing-value codes",
+  "Set to NA and interpolated (Task 1.6)"
+)
+renewables_long <- renewables_long %>%
+  mutate(Renewables = if_else(Renewables < 0 |
+                                Renewables %in% sentinel_values,
+                              NA_real_, Renewables))
+
+# Blank cells inside the wide table (missing years for a country).
+renew_blank <- renewables_long %>% filter(is.na(Renewables))
+defect_log <- LogDefect(
+  defect_log, "Renewables.csv", "Renewables", renew_blank,
+  "is.na(Renewables) after pivoting: empty cells in the wide table",
+  "Interpolated from neighbouring years (Task 1.6)"
+)
+# DECISION: no spike check on renewables. Generation that grows from
+# near zero (e.g. new solar programmes) legitimately exceeds 10x its
+# median, so FlagSpikes() would remove real growth.
+
+cat("Emissions rows: ", n_emissions_raw, "->", nrow(emissions), "\n")
+n_countries <- n_distinct(emissions$ISO)
+cat("Countries in Emissions.csv:", n_countries, "\n")
+```
+
+### 1.5 Merge the five new variables into the master data frame
+
+*Add `Renewables`, `ConsCO2`, `Population`, `GDP`, `GDPCapita`.*
+
+```{r t1q5}
+# Emissions is the master: left joins keep every country-year in it.
+# Each source gets a match flag so a genuine NA value can be told apart
+# from a row that failed to join.
+#   Renewables  -> ISO + Year (ISO obtained from the country name in 1.2)
+#   Consumption -> ISO + Year
+#   Countries   -> ISO only (static 2022 reference values)
+master <- emissions %>%
+  left_join(renewables_long %>%
+              select(ISO, Year, Renewables) %>%
+              mutate(RenewMatch = TRUE),
+            by = c("ISO", "Year")) %>%
+  left_join(consumption %>%
+              select(ISO, Year, ConsCO2) %>%
+              mutate(ConsMatch = TRUE),
+            by = c("ISO", "Year")) %>%
+  left_join(countries %>%
+              select(ISO, Population, GDP, GDPCapita) %>%
+              mutate(CtryMatch = TRUE),
+            by = "ISO")
+
+# A left join must never add rows to the master.
+stopifnot(nrow(master) == nrow(emissions))
+
+join_report <- tibble(
+  Join = c("Renewables (name -> ISO, + Year)", "Consumption (ISO + Year)",
+           "Countries (ISO)"),
+  MasterRowsUnmatched = c(sum(is.na(master$RenewMatch)),
+                          sum(is.na(master$ConsMatch)),
+                          sum(is.na(master$CtryMatch))),
+  CountriesUnmatched = c(n_distinct(master$ISO[is.na(master$RenewMatch)]),
+                         n_distinct(master$ISO[is.na(master$ConsMatch)]),
+                         n_distinct(master$ISO[is.na(master$CtryMatch)])),
+  SourceRowsUnused = c(
+    nrow(anti_join(renewables_long, emissions, by = c("ISO", "Year"))),
+    nrow(anti_join(consumption, emissions, by = c("ISO", "Year"))),
+    nrow(anti_join(countries, emissions, by = "ISO"))
+  )
+)
+kable(join_report, caption = "Rows that failed to match on each join")
+
+# Which countries are behind the unmatched rows?
+master %>%
+  group_by(ISO, Country) %>%
+  summarise(NoRenewables = all(is.na(RenewMatch)),
+            NoConsumption = all(is.na(ConsMatch)),
+            NoCountryInfo = all(is.na(CtryMatch)), .groups = "drop") %>%
+  filter(NoRenewables | NoConsumption | NoCountryInfo) %>%
+  print(n = 30)
+
+master <- select(master, -RenewMatch, -ConsMatch, -CtryMatch)
+```
+
+*How many rows failed to match on each join, and what did you do about
+them?*
+
+After the 5 duplicate rows were removed, the master data frame built
+from Emissions.csv contained 3,000 rows, covering 150 countries over 20
+years. Each of the three sources was attached with a left join, so every
+master row was kept and no rows were added.
+
+The Renewables join, which used the ISO codes mapped from country names
+in 1.2 together with Year, left 80 master rows unmatched. All of them
+belong to 4 countries that have no row in Renewables.csv (4 countries ×
+20 years). In the other direction, no renewables row was left unused,
+which shows that the name mapping in 1.2 successfully matched every
+remaining country.
+
+The Consumption join, on ISO and Year, left 1,103 master rows from 56
+countries unmatched. Most of these come from 55 countries that have no
+consumption-based data at all (55 × 20 = 1,100 rows); the remaining 3
+rows are years missing from one country's otherwise complete record.
+Again, no row of Consumption.csv went unused. This confirms that
+trimming and upper-casing the ISO codes (for example " gha" to "GHA") in
+1.3 and standardising the Year formats in 1.4 fixed every join failure
+those defects would otherwise have caused. The Countries join, on ISO
+alone, matched every master row.
+
+I kept the unmatched rows in the master rather than dropping them,
+because removing them would delete those countries' emissions from every
+total in Task 2. Instead, their missing values were filled in Task 1.6,
+and flag columns (RenewImputed and ConsImputed) record which countries'
+values were imputed so that they can be identified in later analysis.
+
+### 1.6 Handle the NAs
+
+```{r t1q6}
+na_before <- colSums(is.na(master))
+
+master <- master %>%
+  group_by(ISO) %>%
+  arrange(Year, .by_group = TRUE) %>%
+  mutate(
+    # Record coverage before anything is filled in.
+    ConsImputed = all(is.na(ConsCO2)),
+    RenewImputed = all(is.na(Renewables)),
+    # Annual series change smoothly, so gaps inside a country's record
+    # (including the negative/spike values set to NA) are interpolated.
+    CO2 = InterpolateWithin(Year, CO2),
+    OilCO2 = InterpolateWithin(Year, OilCO2),
+    Renewables = InterpolateWithin(Year, Renewables),
+    ConsCO2 = InterpolateWithin(Year, ConsCO2)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    # A country whose CO2 is missing in every year cannot be recovered.
+    CO2 = replace_na(CO2, 0),
+    # DECISION: a country with no consumption data at all is assumed
+    # trade-neutral (ConsCO2 = CO2, so NetImported = 0) rather than 0,
+    # which would make it look like a huge carbon exporter (see 1A iii).
+    ConsCO2 = if_else(is.na(ConsCO2), CO2, ConsCO2),
+    # No renewable data at all: 0, flagged by RenewImputed.
+    Renewables = replace_na(Renewables, 0),
+    # Oil emissions cannot exceed the total after interpolation.
+    OilCO2 = pmin(replace_na(OilCO2, 0), CO2)
+  )
+
+# Static variables: derive one from the other two where possible ...
+master <- master %>%
+  mutate(GDP = coalesce(GDP, GDPCapita * Population / 1e6),
+         GDPCapita = coalesce(GDPCapita, GDP * 1e6 / Population))
+
+# ... otherwise use the region median (one value per country, so large
+# regions are not weighted by their number of rows).
+region_medians <- master %>%
+  distinct(ISO, Region, Population, GDPCapita) %>%
+  group_by(Region) %>%
+  summarise(MedPop = median(Population, na.rm = TRUE),
+            MedGDPCapita = median(GDPCapita, na.rm = TRUE),
+            .groups = "drop")
+
+master <- master %>%
+  left_join(region_medians, by = "Region") %>%
+  mutate(PopImputed = is.na(Population),
+         Population = coalesce(Population, MedPop),
+         GDPCapita = coalesce(GDPCapita, MedGDPCapita),
+         GDP = coalesce(GDP, GDPCapita * Population / 1e6)) %>%
+  select(-MedPop, -MedGDPCapita)
+
+tibble(Variable = names(na_before),
+       NA_before = na_before,
+       NA_after = colSums(is.na(master))[names(na_before)]) %>%
+  filter(NA_before > 0) %>%
+  kable(caption = "Missing values before and after treatment")
+
+cat("Countries with consumption imputed as CO2:",
+    n_distinct(master$ISO[master$ConsImputed]), "\n")
+cat("Countries with no renewables data (set to 0):",
+    n_distinct(master$ISO[master$RenewImputed]), "\n")
+cat("Countries with population from the region median:",
+    n_distinct(master$ISO[master$PopImputed]), "\n")
+```
+
+*Justify your treatment of each variable. Different variables may
+warrant different choices.*
+
+The 4 missing CO2 values and 5 missing OilCO2 values are those removed
+during cleaning in 1.4b, including the 4 negative CO2 figures, and each
+is listed in the defect log. I filled them by linear interpolation from
+the same country's neighbouring years. Annual emissions change gradually
+and each gap is a single year, so interpolation produces a realistic
+estimate, whereas replacing them with 0 would understate CumCO2 in every
+subsequent year.
+
+Renewables had 84 missing values, which needed two different treatments.
+Four of them are Romania's blank cells for 2015 to 2018, which I
+interpolated between its 2014 value (27.12 TWh) and its 2019 value
+(24.63 TWh). The other 80 belong to the 4 countries with no renewables
+data at all. Because there is no country-specific value to interpolate
+from, I set these to 0 and flagged them with RenewImputed. I chose this
+over a regional average, which would invent generation that these
+countries may not have, while accepting that `Renew_PC` will be
+understated for any of them that do generate renewable electricity.
+
+`ConsCO2` had the largest gap, with 1,105 missing values. For the 55
+countries with no consumption data at all, I assumed trade neutrality by
+setting ConsCO2 equal to CO2, so their NetImported is 0, and recorded
+this with ConsImputed. Setting them to 0 instead would claim that these
+countries consume no emissions whatsoever, making NetImported equal to
+-CumCO2 and presenting every one of them as a large exporter of embodied
+carbon, a bias examined in 1A iii. The remaining gaps, the country
+missing 3 years and Panama's two implausible values (0.28 in 2007 and
+0.17 in 2011, against a typical value of about 3.7), were interpolated
+within each country's own series.
+
+GDP and GDPCapita each had 500 missing values, from 25 countries, such
+as Aruba and Andorra, that have neither figure, so one could not be
+derived from the other. I filled GDPCapita with the median of its
+region, calculated from one value per country so that regions were not
+weighted by their number of rows, and then calculated GDP as GDPCapita ×
+Population / 1e6. This keeps each country's real population in its GDP
+estimate and keeps the three columns mathematically consistent. Dropping
+these countries would remove their emissions from every total, and using
+0 would distort the correlations and models in Task 3.
+
+Population had no missing values. Its only defect, Chile's recorded
+population of 19,553, had already been corrected in 1.4b to the value
+implied by its GDP and GDPCapita.
+
+### 1.7 Add `Decade` and `Period`
+
+```{r t1q7}
+master <- master %>%
+  mutate(
+    Decade = paste0(Year %/% 10 * 10, "s"),
+    Period = factor(if_else(Year < 2016, "Pre-Paris", "Post-Paris"),
+                    levels = c("Pre-Paris", "Post-Paris"))
+  )
+
+count(master, Decade, Period)
+```
+
+### 1.8 Add the four cumulative variables
+
+*`CumCO2`, `CumOilCO2`, `CumRenew`, `CumConsCO2`.*
+
+```{r t1q8}
+# Running totals must be computed within each country, in year order.
+master <- master %>%
+  arrange(ISO, Year) %>%
+  group_by(ISO) %>%
+  mutate(CumCO2 = cumsum(CO2),
+         CumOilCO2 = cumsum(OilCO2),
+         CumRenew = cumsum(Renewables),
+         CumConsCO2 = cumsum(ConsCO2)) %>%
+  ungroup()
+
+# Check: one country's first rows.
+master %>%
+  filter(ISO == first(ISO)) %>%
+  select(Country, Year, CO2, CumCO2, Renewables, CumRenew) %>%
+  head(5)
+```
+
+### 1.9 Add `NetImported` and `OilShare`
+
+```{r t1q9}
+master <- master %>%
+  mutate(NetImported = CumConsCO2 - CumCO2,
+         # Guard against division by zero for a country with no emissions.
+         OilShare = if_else(CumCO2 > 0, CumOilCO2 / CumCO2, 0))
+
+summary(select(master, NetImported, OilShare))
+```
+
+### 1.10 Add the four per-capita variables
+
+*`CO2_PC`, `OilCO2_PC`, `Renew_PC`, `ConsCO2_PC`.*
+
+```{r t1q10}
+# Emissions are in million tonnes, so * 1e6 / Population gives tonnes per
+# person. For renewables (TWh), * 1e6 / Population gives TWh per million
+# people.
+master <- master %>%
+  mutate(CO2_PC = CumCO2 * 1e6 / Population,
+         OilCO2_PC = CumOilCO2 * 1e6 / Population,
+         Renew_PC = CumRenew * 1e6 / Population,
+         ConsCO2_PC = CumConsCO2 * 1e6 / Population)
+
+summary(select(master, CO2_PC, OilCO2_PC, Renew_PC, ConsCO2_PC))
+```
+
+```{r t1-check}
+# A quick look at the finished master data frame.
+dim(master)
+glimpse(master)
+cat("Remaining NAs:", sum(is.na(master)), "\n")
+```
+
+\newpage
+
+## 1A. Data Quality Audit Report
+
+*Approximately 250 words in total across the three parts below. Every
+claim must reference a specific value, country, year or column from
+**your** data.*
+
+### i. Defect inventory
+
+```{r t1a-detection}
+# Evidence used for detection: summary() of the numeric columns before any
+# fix (impossible minima, extreme maxima) ...
+summary(select(emissions_before_fix, CO2, OilCO2))
+summary(select(countries_raw %>%
+                 mutate(across(c(popData2022, GDP, `GDP/capita`),
+                               ToNumber)),
+               popData2022, GDP, `GDP/capita`))
+
+# ... and the defect log built step by step in Task 1.
+defect_log %>%
+  filter(Rows > 0) %>%
+  kable(caption = "Defect inventory (generated from the detection code)")
+```
+
+*The table above is generated by the detection code. Use it to complete
+or replace the manual table, adding a sentence of interpretation.*
+
+**YOUR ANSWER**
+
+### ii. The negative emissions problem
+
+```{r t1a-negatives}
+# The negative rows, the value before treatment, and the value now in the
+# master after interpolation from neighbouring years.
+negative_rows %>%
+  rename(CO2_original = CO2) %>%
+  left_join(select(master, ISO, Year, CO2_imputed = CO2),
+            by = c("ISO", "Year")) %>%
+  kable(caption = "Negative annual CO2 rows", digits = 2)
+
+# Context: two years either side of each negative value.
+negative_rows %>%
+  select(ISO, NegYear = Year) %>%
+  inner_join(select(emissions_before_fix, ISO, Country, Year, CO2),
+             by = "ISO", relationship = "many-to-many") %>%
+  filter(abs(Year - NegYear) <= 2) %>%
+  select(Country, Year, CO2) %>%
+  kable(caption = "Neighbouring years", digits = 2)
+```
+
+*Which rows are they? Why do negative values legitimately appear in
+published emissions series? What did you do, and what alternative did
+you reject?*
+
+**YOUR ANSWER**
+
+### iii. Coverage gap in consumption-based data
+
+```{r t1a-coverage}
+no_cons <- master %>%
+  filter(ConsImputed) %>%
+  distinct(ISO, Country)
+n_no_cons <- nrow(no_cons)
+cat("Countries with no consumption-based data:", n_no_cons, "of",
+    n_countries, "\n")
+cat("Examples:", paste(head(no_cons$Country, 3), collapse = ", "), "\n")
+
+last_year_preview <- filter(master, Year == max(Year))
+
+# Do covered and uncovered countries differ?
+last_year_preview %>%
+  group_by(Coverage = if_else(ConsImputed, "No consumption data",
+                              "Has consumption data")) %>%
+  summarise(Countries = n(),
+            MedianPopulation_m = median(Population) / 1e6,
+            MedianGDPCapita = median(GDPCapita),
+            MedianCumCO2 = median(CumCO2),
+            MedianCO2_PC = median(CO2_PC),
+            .groups = "drop") %>%
+  kable(digits = 1, caption = "Covered vs uncovered countries")
+
+# What real covered countries look like: NetImported as a share of CumCO2.
+last_year_preview %>%
+  filter(!ConsImputed) %>%
+  summarise(MinShare = min(NetImported / CumCO2),
+            MedianShare = median(NetImported / CumCO2),
+            MaxShare = max(NetImported / CumCO2)) %>%
+  kable(digits = 3,
+        caption = "NetImported / CumCO2 among countries with data")
+
+# Counterfactual: what zero imputation would have produced instead.
+# Zero gives NetImported = -CumCO2 (a share of -1) and ConsCO2_PC = 0.
+zero_bias <- last_year_preview %>%
+  filter(ConsImputed) %>%
+  transmute(Country, CumCO2, CO2_PC,
+            NetImported_zero = 0 - CumCO2,
+            ConsCO2_PC_zero = 0,
+            ConsCO2_PC_now = ConsCO2_PC) %>%
+  arrange(NetImported_zero)
+
+kable(head(zero_bias, 5), digits = 1,
+      caption = "Most biased countries under zero imputation")
+```
+
+*How many countries have no coverage? Name three. Is imputing zero
+valid? If it biases `ConsCO2_PC` and `NetImported`, in which direction,
+and for which type of country is the bias worst? Support this with a
+number.*
+
+**YOUR ANSWER**
+
+\newpage
+
+# Task 2: Exploratory data analysis
+
+### 2.1 Highest-emitting year, and the largest year-on-year fall
+
+```{r t2q1}
+yearly_totals <- master %>%
+  group_by(Year) %>%
+  summarise(TotalCO2 = sum(CO2), Countries = n_distinct(ISO),
+            .groups = "drop") %>%
+  arrange(Year) %>%
+  mutate(Change = TotalCO2 - lag(TotalCO2),
+         PctChange = 100 * Change / lag(TotalCO2))
+
+peak_year <- slice_max(yearly_totals, TotalCO2, n = 1, with_ties = FALSE)
+largest_fall <- slice_min(yearly_totals, Change, n = 1, with_ties = FALSE)
+
+cat("Highest total CO2:", peak_year$Year, "with",
+    comma(peak_year$TotalCO2, accuracy = 0.1), "Mt\n")
+cat("Largest year-on-year fall:", largest_fall$Year, "(",
+    comma(largest_fall$Change, accuracy = 0.1), "Mt,",
+    round(largest_fall$PctChange, 2), "%)\n")
+
+# The Countries column confirms the fall is not caused by countries
+# dropping out of the record that year.
+kable(yearly_totals, digits = 1)
+```
+
+*What caused the largest fall?*
+
+**YOUR ANSWER**
+
+### 2.2 Cumulative totals over time for the whole dataset
+
+```{r t2q2, fig.width=8, fig.height=5}
+cum_totals <- master %>%
+  group_by(Year) %>%
+  summarise(across(c(CumCO2, CumOilCO2, CumConsCO2, CumRenew), sum),
+            .groups = "drop") %>%
+  pivot_longer(-Year, names_to = "Measure", values_to = "Value") %>%
+  mutate(
+    # Emissions (Mt) and renewables (TWh) have different units, so they
+    # get separate panels rather than one misleading shared axis.
+    Panel = if_else(Measure == "CumRenew", "Renewable generation (TWh)",
+                    "Emissions (Mt CO2)"),
+    Measure = recode(Measure, CumCO2 = "Production CO2",
+                     CumOilCO2 = "Oil CO2",
+                     CumConsCO2 = "Consumption CO2",
+                     CumRenew = "Renewables")
+  )
+
+ggplot(cum_totals, aes(Year, Value, colour = Measure)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 1) +
+  facet_wrap(~ Panel, scales = "free_y") +
+  scale_y_continuous(labels = label_comma()) +
+  labs(title = "Cumulative emissions and renewable generation, all countries",
+       x = "Year", y = "Cumulative total", colour = NULL) +
+  theme(legend.position = "bottom")
+```
+
+### 2.3 Extract `lastYear_data`
+
+*Compute the final year — do not type it in.*
+
+```{r t2q3}
+lastYear_data <- master %>% filter(Year == max(Year))
+
+cat("Final year:", unique(lastYear_data$Year), "| Countries:",
+    nrow(lastYear_data), "\n")
+```
+
+### 2.4 Top 10 countries on four measures
+
+*`top10total`, `top10percap`, `top10net`, `top10renew`.*
+
+```{r t2q4}
+top10total <- lastYear_data %>%
+  slice_max(CumCO2, n = 10, with_ties = FALSE) %>%
+  select(ISO, Country, Region, CumCO2, Population, CO2_PC)
+
+top10percap <- lastYear_data %>%
+  slice_max(CO2_PC, n = 10, with_ties = FALSE) %>%
+  select(ISO, Country, Region, CO2_PC, CumCO2, Population)
+
+top10net <- lastYear_data %>%
+  slice_max(NetImported, n = 10, with_ties = FALSE) %>%
+  select(ISO, Country, Region, NetImported, CumConsCO2, CumCO2)
+
+top10renew <- lastYear_data %>%
+  slice_max(Renew_PC, n = 10, with_ties = FALSE) %>%
+  select(ISO, Country, Region, Renew_PC, CumRenew, Population)
+
+kable(top10total, digits = 1, format.args = list(big.mark = ","),
+      caption = "Top 10 by cumulative CO2 (Mt)")
+kable(top10percap, digits = 1, format.args = list(big.mark = ","),
+      caption = "Top 10 by cumulative CO2 per capita (t)")
+kable(top10net, digits = 1, format.args = list(big.mark = ","),
+      caption = "Top 10 net importers of embodied CO2 (Mt)")
+kable(top10renew, digits = 2, format.args = list(big.mark = ","),
+      caption = "Top 10 by renewables per capita (TWh per million people)")
+```
+
+### 2.5 Totals by region
+
+```{r t2q5}
+region_totals <- lastYear_data %>%
+  group_by(Region) %>%
+  summarise(Countries = n(),
+            CumCO2 = sum(CumCO2),
+            CumOilCO2 = sum(CumOilCO2),
+            CumRenew = sum(CumRenew),
+            CumConsCO2 = sum(CumConsCO2),
+            .groups = "drop") %>%
+  arrange(desc(CumCO2))
+
+kable(region_totals, digits = 1, format.args = list(big.mark = ","),
+      caption = "Cumulative totals by region (CO2 in Mt, renewables in TWh)")
+```
+
+### 2.6 Cumulative emissions over time, top 10 countries (log Y)
+
+```{r t2q6, fig.width=8, fig.height=5}
+top10_series <- master %>% filter(ISO %in% top10total$ISO)
+top10_labels <- top10_series %>% filter(Year == max(Year))
+
+ggplot(top10_series, aes(Year, CumCO2, colour = Country)) +
+  geom_line(linewidth = 0.9) +
+  # Labels at the line ends replace a 10-colour legend lookup.
+  geom_text(data = top10_labels, aes(label = Country), hjust = -0.1,
+            size = 3, show.legend = FALSE) +
+  scale_y_log10(labels = label_comma()) +
+  scale_x_continuous(expand = expansion(mult = c(0.02, 0.2))) +
+  labs(title = "Cumulative CO2 emissions, top 10 countries",
+       subtitle = "Log scale: equal vertical distances are equal ratios",
+       x = "Year", y = "Cumulative CO2 (Mt, log scale)") +
+  theme(legend.position = "none")
+```
+
+### 2.7 Faceted plot, one panel per country
+
+```{r t2q7, fig.width=9, fig.height=7}
+top10_annual <- master %>%
+  filter(ISO %in% top10total$ISO) %>%
+  select(Country, Year, CO2, OilCO2, Renewables) %>%
+  pivot_longer(c(CO2, OilCO2, Renewables), names_to = "Variable",
+               values_to = "Value") %>%
+  mutate(Variable = recode(Variable, CO2 = "Annual CO2 (Mt)",
+                           OilCO2 = "Annual oil CO2 (Mt)",
+                           Renewables = "Renewable generation (TWh)"),
+         Country = fct_reorder(Country, Value, .fun = max, .desc = TRUE))
+
+ggplot(top10_annual, aes(Year, Value, colour = Variable)) +
+  geom_line(linewidth = 0.8) +
+  facet_wrap(~ Country, ncol = 5, scales = "free_y") +
+  scale_colour_manual(values = c("#B2182B", "#EF8A62", "#1B7837")) +
+  scale_y_continuous(labels = label_comma()) +
+  labs(title = "Annual CO2, oil CO2 and renewable generation, top 10 emitters",
+       subtitle = "Each panel has its own y-axis",
+       x = "Year", y = "Mt CO2 / TWh", colour = NULL) +
+  theme(legend.position = "bottom",
+        axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### 2.8 Top 10 by emissions per capita
+
+```{r t2q8, fig.width=8, fig.height=5}
+percap_long <- top10percap %>%
+  transmute(Country = fct_reorder(Country, CO2_PC),
+            `Cumulative CO2 (Mt)` = CumCO2,
+            `Population (millions)` = Population / 1e6,
+            `Cumulative CO2 per capita (t)` = CO2_PC) %>%
+  pivot_longer(-Country, names_to = "Measure", values_to = "Value") %>%
+  mutate(Measure = factor(Measure, levels = c(
+    "Cumulative CO2 per capita (t)", "Cumulative CO2 (Mt)",
+    "Population (millions)")))
+
+ggplot(percap_long, aes(Value, Country, fill = Measure)) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~ Measure, scales = "free_x") +
+  scale_x_continuous(labels = label_comma()) +
+  labs(title = "Top 10 countries by cumulative CO2 per capita",
+       subtitle = "Countries ordered by per-capita emissions",
+       x = NULL, y = NULL)
+```
+
+### 2.9 Total, average and median cumulative emissions by region
+
+```{r t2q9, fig.width=8, fig.height=5}
+region_stats <- lastYear_data %>%
+  group_by(Region) %>%
+  summarise(Total = sum(CumCO2), Average = mean(CumCO2),
+            Median = median(CumCO2), .groups = "drop") %>%
+  pivot_longer(-Region, names_to = "Statistic", values_to = "Value") %>%
+  mutate(Statistic = factor(Statistic,
+                            levels = c("Total", "Average", "Median")))
+
+ggplot(region_stats, aes(Region, Value, fill = Region)) +
+  geom_col() +
+  facet_wrap(~ Statistic, scales = "free_y") +
+  scale_y_continuous(labels = label_comma()) +
+  labs(title = "Cumulative CO2 by region: total, average and median",
+       x = NULL, y = "Cumulative CO2 (Mt)", fill = "Region") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+### 2.10 Top 2 countries per region by emissions per capita
+
+```{r t2q10}
+top2_region <- lastYear_data %>%
+  group_by(Region) %>%
+  slice_max(CO2_PC, n = 2, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(Region, Country, CO2_PC, CumCO2, Population) %>%
+  arrange(Region, desc(CO2_PC))
+
+kable(top2_region, digits = 1, format.args = list(big.mark = ","),
+      caption = "Top 2 countries per region by cumulative CO2 per capita (t)")
+```
+
+------------------------------------------------------------------------
+
+## 2A. Counterintuitive finding
+
+*What did you expect, and why was that reasonable?*
+
+**YOUR ANSWER**
+
+*What does the data actually show? Quote a specific value, country or
+trend from your own plots.*
+
+**YOUR ANSWER**
+
+*What real-world mechanism could explain the discrepancy?*
+
+**YOUR ANSWER**
+
+### Supporting visualisation
+
+```{r t2a-plot, fig.width=8, fig.height=5}
+# Population vs per-capita emissions, coloured by oil share: tests whether
+# the per-capita leaders are small, oil- or gas-intensive economies rather
+# than the large total emitters.
+label_iso <- union(top10total$ISO, top10percap$ISO)
+
+ggplot(lastYear_data, aes(Population / 1e6, CO2_PC)) +
+  geom_point(aes(size = CumCO2, colour = OilShare), alpha = 0.75) +
+  geom_text(data = filter(lastYear_data, ISO %in% label_iso),
+            aes(label = Country), size = 2.8, vjust = -0.9,
+            check_overlap = TRUE) +
+  scale_x_log10(labels = label_comma()) +
+  scale_y_log10(labels = label_comma()) +
+  scale_colour_viridis_c(labels = label_percent()) +
+  scale_size_continuous(labels = label_comma(), range = c(1, 10)) +
+  labs(title = "Small populations, high per-capita emissions",
+       x = "Population (millions, log scale)",
+       y = "Cumulative CO2 per capita (t, log scale)",
+       colour = "Oil share", size = "Cumulative CO2 (Mt)")
+```
+
+*Caption (2–3 sentences): what does this chart show, and why did you
+choose this chart type?*
+
+**YOUR ANSWER**
+
+------------------------------------------------------------------------
+
+## 2B. Visualisation design critique
+
+**Visualisation chosen:** *(state which question it is from)*
+
+*Approximately 150 words covering: two design decisions and what each
+communicates; one alternative you rejected and concretely why it would
+communicate worse; one limitation a reader could misinterpret, and how
+you would mitigate it.*
+
+**YOUR ANSWER**
+
+\newpage
+
+# Task 3: Data-driven modelling
+
+### 3.1 Build `cor_data`
+
+```{r t3q1}
+# Final-year record for each country (each country's own last year, in
+# case a country's record ends early). Country names are kept as row
+# names so the diagnostic plots in 3A label points by country.
+cor_data <- master %>%
+  group_by(ISO) %>%
+  filter(Year == max(Year)) %>%
+  ungroup() %>%
+  select(Country, CumCO2, CumConsCO2, Population, GDP, GDPCapita) %>%
+  column_to_rownames("Country") %>%
+  as.data.frame()
+
+dim(cor_data)
+head(cor_data)
+```
+
+### 3.2 Correlation matrix
+
+```{r t3q2, fig.width=6, fig.height=5}
+cor_matrix <- cor(cor_data)
+round(cor_matrix, 2)
+
+as.data.frame(as.table(cor_matrix)) %>%
+  ggplot(aes(Var1, Var2, fill = Freq)) +
+  geom_tile(colour = "white") +
+  geom_text(aes(label = sprintf("%.2f", Freq)), size = 3.5) +
+  scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B",
+                       limits = c(-1, 1)) +
+  labs(title = "Correlation matrix of cor_data", x = NULL, y = NULL,
+       fill = "r") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+cor_gdp <- cor(cor_data$CumCO2, cor_data$GDP)
+cor_gdp_pc <- cor(cor_data$CumCO2, cor_data$GDPCapita)
+cat("cor(CumCO2, GDP)       =", round(cor_gdp, 2), "\n")
+cat("cor(CumCO2, GDPCapita) =", round(cor_gdp_pc, 2), "\n")
+```
+
+*Report `cor(CumCO2, GDP)` and `cor(CumCO2, GDPCapita)`. Why are those
+two numbers so different?*
+
+**YOUR ANSWER**
+
+### 3.3 Distribution of `CumCO2`, with and without log
+
+```{r t3q3, fig.width=8, fig.height=3.5}
+ggplot(cor_data, aes(CumCO2)) +
+  geom_histogram(bins = 20, fill = "grey60", colour = "white") +
+  scale_x_continuous(labels = label_comma()) +
+  labs(title = "CumCO2: raw scale", x = "Cumulative CO2 (Mt)",
+       y = "Number of countries")
+
+ggplot(filter(cor_data, CumCO2 > 0), aes(CumCO2)) +
+  geom_histogram(bins = 20, fill = "steelblue", colour = "white") +
+  scale_x_log10(labels = label_comma()) +
+  labs(title = "CumCO2: log10 scale", x = "Cumulative CO2 (Mt, log scale)",
+       y = "Number of countries")
+```
+
+### 3.4 Train/test split
+
+```{r t3q4}
+## Required — do not remove or change this line:
+set.seed(seed_from_id(params$studentID))
+
+# Your 65/35 split goes below.
+train_idx <- sample(seq_len(nrow(cor_data)),
+                    size = round(0.65 * nrow(cor_data)))
+train_data <- cor_data[train_idx, ]
+test_data <- cor_data[-train_idx, ]
+
+cat("Training rows:", nrow(train_data), "| Testing rows:", nrow(test_data),
+    "\n")
+```
+
+### 3.5 Linear model: `CumCO2 ~ GDP`
+
+```{r t3q5}
+model_gdp <- lm(CumCO2 ~ GDP, data = train_data)
+summary(model_gdp)
+
+pred_gdp <- predict(model_gdp, newdata = test_data)
+rmse_gdp <- Rmse(test_data$CumCO2, pred_gdp)
+r2_gdp <- RSquared(test_data$CumCO2, pred_gdp)
+cat("Test RMSE (GDP only):", round(rmse_gdp, 2), "Mt | Test R2:",
+    round(r2_gdp, 3), "\n")
+```
+
+### 3.6 Linear model: all predictors
+
+```{r t3q6}
+model_full <- lm(CumCO2 ~ CumConsCO2 + Population + GDP + GDPCapita,
+                 data = train_data)
+summary(model_full)
+
+pred_full <- predict(model_full, newdata = test_data)
+rmse_full <- Rmse(test_data$CumCO2, pred_full)
+r2_full <- RSquared(test_data$CumCO2, pred_full)
+cat("Test RMSE (all predictors):", round(rmse_full, 2), "Mt | Test R2:",
+    round(r2_full, 3), "\n")
+```
+
+### 3.7 Interpret and compare the two models
+
+*When should the first be preferred, and when the second? If the full
+model has the higher test RMSE, explain why — that is not an error.*
+
+**YOUR ANSWER**
+
+### 3.8 Alternative models
+
+```{r t3q8}
+predictors <- c("CumConsCO2", "Population", "GDP", "GDPCapita")
+x_train <- as.matrix(train_data[, predictors])
+x_test <- as.matrix(test_data[, predictors])
+y_train <- train_data$CumCO2
+y_test <- test_data$CumCO2
+
+# Cross-validation folds are random; seeding again makes the lambda
+# choice reproducible. The train/test split above is unaffected.
+set.seed(seed_from_id(params$studentID))
+
+# Ridge (alpha = 0) and lasso (alpha = 1); lambda chosen by 5-fold CV
+# (5 rather than 10 folds because the training set is small).
+ridge_cv <- cv.glmnet(x_train, y_train, alpha = 0, nfolds = 5)
+lasso_cv <- cv.glmnet(x_train, y_train, alpha = 1, nfolds = 5)
+pred_ridge <- as.numeric(predict(ridge_cv, newx = x_test,
+                                 s = "lambda.min"))
+pred_lasso <- as.numeric(predict(lasso_cv, newx = x_test,
+                                 s = "lambda.min"))
+coef(lasso_cv, s = "lambda.min")  # which predictors lasso keeps
+
+# Regression tree, pruned at the complexity with lowest CV error.
+tree_fit <- rpart(CumCO2 ~ ., data = train_data, method = "anova",
+                  control = rpart.control(minsplit = 6, cp = 0.001))
+best_cp <- tree_fit$cptable[which.min(tree_fit$cptable[, "xerror"]), "CP"]
+tree_pruned <- prune(tree_fit, cp = best_cp)
+pred_tree <- predict(tree_pruned, newdata = test_data)
+
+# Log-log linear model: addresses the skew seen in 3.3 and 3A.
+# log1p() keeps zero values defined; predictions are back-transformed.
+model_log <- lm(log1p(CumCO2) ~ log1p(CumConsCO2) + log1p(Population) +
+                  log1p(GDP) + log1p(GDPCapita), data = train_data)
+pred_log <- expm1(predict(model_log, newdata = test_data))
+
+model_comparison <- tibble(
+  Model = c("Linear (GDP only)", "Linear (all variables)",
+            "Ridge (all variables)", "Lasso (all variables)",
+            "Regression tree", "Log-log linear (all variables)"),
+  RMSE = c(rmse_gdp, rmse_full, Rmse(y_test, pred_ridge),
+           Rmse(y_test, pred_lasso), Rmse(y_test, pred_tree),
+           Rmse(y_test, pred_log)),
+  R_squared = c(r2_gdp, r2_full, RSquared(y_test, pred_ridge),
+                RSquared(y_test, pred_lasso), RSquared(y_test, pred_tree),
+                RSquared(y_test, pred_log))
+) %>%
+  arrange(RMSE)
+
+kable(model_comparison, digits = 3, format.args = list(big.mark = ","),
+      caption = "Test-set performance (RMSE in Mt CO2)")
+```
+
+*The comparison table above is generated from the code; you can delete
+the manual table below.*
+
+| Model                  | RMSE | R-squared |
+|------------------------|------|-----------|
+| Linear (GDP only)      |      |           |
+| Linear (all variables) |      |           |
+|                        |      |           |
+|                        |      |           |
+
+**YOUR ANSWER** *(brief comment on the comparison)*
+
+------------------------------------------------------------------------
+
+## 3A. Assumption checking
+
+### i. Linearity
+
+```{r t3a-linearity, fig.width=8, fig.height=6}
+train_long <- train_data %>%
+  rownames_to_column("Country") %>%
+  pivot_longer(all_of(predictors), names_to = "Predictor",
+               values_to = "Value")
+
+# Solid line: linear fit. Dashed line: flexible (loess) fit. Where the two
+# diverge, a straight line is a poor description of the relationship.
+ggplot(train_long, aes(Value, CumCO2)) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, colour = "steelblue") +
+  geom_smooth(method = "loess", se = FALSE, span = 0.9,
+              colour = "firebrick", linetype = "dashed") +
+  facet_wrap(~ Predictor, scales = "free_x") +
+  scale_x_continuous(labels = label_comma()) +
+  scale_y_continuous(labels = label_comma()) +
+  labs(title = "CumCO2 against each predictor (training data)",
+       x = "Predictor value", y = "Cumulative CO2 (Mt)")
+
+# Pearson measures linear association, Spearman monotonic association; a
+# large gap between them signals a non-linear relationship.
+train_long %>%
+  group_by(Predictor) %>%
+  summarise(Pearson = cor(Value, CumCO2),
+            Spearman = cor(Value, CumCO2, method = "spearman"),
+            Gap = Spearman - Pearson, .groups = "drop") %>%
+  kable(digits = 3)
+```
+
+*Does a linear relationship look reasonable? Which predictor departs
+from it most clearly?*
+
+**YOUR ANSWER**
+
+### ii. Distribution of the response
+
+```{r t3a-normality}
+# Numerical support for the 3.3 histograms: a strongly right-skewed
+# variable has a mean far above its median.
+c(Mean = mean(train_data$CumCO2), Median = median(train_data$CumCO2))
+shapiro.test(train_data$CumCO2)
+shapiro.test(log1p(train_data$CumCO2))
+```
+
+*Using your plots from 3.3 — does raw `CumCO2` satisfy the normality
+assumption? Is a transformation warranted?*
+
+**YOUR ANSWER**
+
+### iii. Residual diagnostics
+
+```{r t3a-diagnostics, fig.width=8, fig.height=7}
+par(mfrow = c(2, 2))
+plot(model_full, which = c(1, 2, 3, 5))
+par(mfrow = c(1, 1))
+```
+
+| Plot                  | What assumption it tests | Does your model satisfy it? |
+|-----------------------|--------------------------|-----------------------------|
+| Residuals vs Fitted   |                          |                             |
+| Normal Q-Q            |                          |                             |
+| Scale-Location        |                          |                             |
+| Residuals vs Leverage |                          |                             |
+
+### iv. Influential observations
+
+```{r t3a-leverage}
+# Leverage (hat value) and Cook's distance for each training country.
+# Rule of thumb: leverage above 2p/n is high.
+p <- length(coef(model_full))
+n <- nrow(train_data)
+influence_tbl <- tibble(Country = names(hatvalues(model_full)),
+                        Leverage = hatvalues(model_full),
+                        CooksD = cooks.distance(model_full)) %>%
+  arrange(desc(Leverage))
+
+cat("High-leverage threshold (2p/n):", round(2 * p / n, 3), "\n")
+kable(head(influence_tbl, 5), digits = 3)
+
+high_lev_country <- influence_tbl$Country[1]
+cat("High-leverage country:", high_lev_country, "\n")
+
+model_full_drop <- lm(CumCO2 ~ CumConsCO2 + Population + GDP + GDPCapita,
+                      data = train_data[rownames(train_data) !=
+                                          high_lev_country, ])
+rmse_full_drop <- Rmse(test_data$CumCO2,
+                       predict(model_full_drop, newdata = test_data))
+cat("Test RMSE with", high_lev_country, "removed:",
+    round(rmse_full_drop, 2), "Mt (was", round(rmse_full, 2), "Mt)\n")
+```
+
+**High-leverage country:** *name it*
+
+**New test RMSE without it:** *value*
+
+*Is removing it defensible? Two sentences.*
+
+**YOUR ANSWER**
+
+### v. Verdict
+
+*Is linear regression a valid choice here? If assumptions are violated,
+what does that mean in practice for your coefficients and predictions?*
+
+**YOUR ANSWER**
+
+------------------------------------------------------------------------
+
+## 3B. Feature engineering critique
+
+*Approximately 300 words across the three parts.*
+
+### i. Theoretical critique
+
+*State the physical pathway from GDP to emissions. Then explain why high
+correlation still does not license a causal claim: name at least two
+confounding or mediating variables GDP is proxying for. Reference your
+own correlation from 3.2, and contrast it with the `GDPCapita`
+correlation.*
+
+**YOUR ANSWER**
+
+### ii. Proposed feature
+
+*Propose one engineered feature not in the dataset. Say exactly how you
+would construct it — what raw data, what calculation — and why it is
+more causally connected to emissions than GDP.*
+
+**YOUR ANSWER**
+
+### iii. Ethical risk
+
+*If this model allocated climate finance or set national reduction
+obligations, name one specific way it would be systematically unfair,
+and show that the unfairness comes from the structure of the model, not
+just "bias in the data".*
+
+*Use your own data: name a country with large positive `NetImported` and
+one with large negative `NetImported`, and build your argument around
+them.*
+
+```{r t3b-evidence}
+# Only countries with real consumption data: for the others NetImported is
+# 0 by construction (Task 1.6), so they cannot illustrate the point.
+covered_last <- lastYear_data %>% filter(!ConsImputed)
+
+bind_rows(
+  slice_max(covered_last, NetImported, n = 1) %>%
+    mutate(Role = "Largest net importer"),
+  slice_min(covered_last, NetImported, n = 1) %>%
+    mutate(Role = "Largest net exporter")
+) %>%
+  select(Role, Country, NetImported, CumCO2, CumConsCO2, CO2_PC,
+         ConsCO2_PC, GDP) %>%
+  kable(digits = 1, format.args = list(big.mark = ","))
+```
+
+**YOUR ANSWER**
+
+\newpage
+
+# Task 4: Insights
+
+## Narrative thesis
+
+*One sentence: the single story a reader should take away from your
+dashboard.*
+
+**YOUR ANSWER**
+
+## Dashboard sketch
+
+*Embed your photographed hand-drawn sketch below. This is mandatory —
+without it you lose all design marks.*
+
+```{r t4-sketch, echo=FALSE, out.width="100%"}
+# knitr::include_graphics("my_dashboard_sketch.jpg")
+
+```
+
+## 4.1 Data augmentation
+
+*How would you augment this dataset for a comprehensive view of the
+transition? What sources, and what would each add?*
+
+**YOUR ANSWER**
+
+## 4.2 Key insights
+
+*Which insights would you highlight for a public audience? What figures
+would you use, and why is each important?*
+
+**YOUR ANSWER**
+
+## 4.3 Design elements
+
+*Layout, colour, typography, placement.*
+
+**YOUR ANSWER**
+
+## 4.4 Audience consideration
+
+*How does the design serve a public audience — accessible,
+understandable, actionable?*
+
+**YOUR ANSWER**
+
+## 4.5 Additional questions
+
+*One relevant metric or visualisation you deliberately omitted, and why
+omitting it serves clarity.*
+
+**YOUR ANSWER**
+
+*One way your dashboard could be misread, and how design mitigates it.*
+
+**YOUR ANSWER**
+
+*Does your headline figure use total or per-capita emissions? Defend
+that choice against the obvious objection.*
+
+**YOUR ANSWER**
+
+\newpage
+
+# Conclusions
+
+*What are the main things your analysis shows? Keep it grounded in your
+own numbers.*
+
+**YOUR ANSWER**
+
+\newpage
+
+# Section 5: Verification
+
+## 5.1 Results Summary Table
+
+```{r s5-values}
+# Prints every value needed for the table below, straight from the
+# objects computed above, so the table can be filled in without retyping
+# numbers by hand from different sections.
+neg_label <- if (nrow(negative_rows) == 0) "none" else
+  paste(paste(negative_rows$Country, negative_rows$Year), collapse = "; ")
+
+cat(" 1. Fingerprint:", my$fingerprint, "\n",
+    "2. First and last year:", min(master$Year), "-", max(master$Year),
+    "\n",
+    "3. Countries in Emissions.csv:", n_countries, "\n",
+    "4. dim(master):", paste(dim(master), collapse = " x "), "\n",
+    "5. Duplicate rows removed:", n_dup_removed, "\n",
+    "6. Negative-emissions rows:", neg_label, "\n",
+    "7. Countries with no consumption data:", n_no_cons, "\n",
+    "8. Highest-CO2 year and total:", peak_year$Year, "/",
+    round(peak_year$TotalCO2, 1), "Mt\n",
+    "9. Top cumulative / per capita:", top10total$Country[1], "/",
+    top10percap$Country[1], "\n",
+    "10. cor(CumCO2, GDP) / cor(CumCO2, GDPCapita):", round(cor_gdp, 2),
+    "/", round(cor_gdp_pc, 2), "\n",
+    "11. Test RMSE, GDP-only model:", round(rmse_gdp, 2), "\n",
+    "12. Test RMSE, full model:", round(rmse_full, 2), "\n",
+    "13. High-leverage country:", high_lev_country, "\n")
+```
+
+*Fill every cell by hand from your own output. If you could not compute
+one, write `NA` and say why in a footnote below the table.*
+
+| \# | Quantity | Your value |
+|----|----|----|
+| 1 | Dataset fingerprint (printed by the setup chunk) |  |
+| 2 | First and last year in your dataset |  |
+| 3 | Number of countries in your `Emissions.csv` |  |
+| 4 | `dim()` of your final merged master data frame |  |
+| 5 | Number of duplicate rows you removed in Task 1 |  |
+| 6 | Countries and years of the negative-emissions rows (1A ii) |  |
+| 7 | Number of countries with no consumption-based data (1A iii) |  |
+| 8 | Year with the highest total CO2, and that total (Task 2.1) |  |
+| 9 | Top country by cumulative emissions, and by emissions per capita |  |
+| 10 | `cor(CumCO2, GDP)` and `cor(CumCO2, GDPCapita)` (2 dp) |  |
+| 11 | Test RMSE of the GDP-only model (Task 3.5) |  |
+| 12 | Test RMSE of the full model (Task 3.6) |  |
+| 13 | The high-leverage country you identified (3A iv) |  |
+
+## 5.2 Reproducibility appendix
+
+*Run this chunk unchanged. Do not edit it.*
+
+```{r reproducibility}
+cat("Student ID  :", params$studentID, "\n")
+cat("Fingerprint :", my$fingerprint, "\n")
+cat("Window      :", paste(my$window, collapse = " - "), "\n")
+cat("Knitted at  :", format(Sys.time(), "%Y-%m-%d %H:%M:%S %Z"), "\n")
+cat("Chunks run  :", length(knitr::all_labels()), "\n\n")
+print(sessionInfo()$R.version$version.string)
+```
+
+\newpage
+
+# Appendix: Decision Log
+
+*Minimum five entries. Write each one **at the time you make the
+decision**, not at the end. Every entry must reference something
+specific from your own analysis — a variable name, a country, a line of
+code, an output value. Generic entries receive zero marks. Add rows
+freely; more than five is viewed favourably.*
+
+| \# | Task & step | Decision made | Alternative considered | Why I chose this | Impact on results |
+|----|----|----|----|----|----|
+| 1 |  |  |  |  |  |
+| 2 |  |  |  |  |  |
+| 3 |  |  |  |  |  |
+| 4 |  |  |  |  |  |
+| 5 |  |  |  |  |  |
+
+------------------------------------------------------------------------
+
+# Declaration
+
+> I confirm that the dataset analysed in this submission was generated
+> from my own student ID, that the values reported in Section 5.1 are
+> the values produced by the code in this document, and that all
+> explanations and interpretations are my own work.
+>
+> **Student ID:** \_\_\_\_\_\_\_\_\_\_\_\_\_\_ **Date:**
+> \_\_\_\_\_\_\_\_\_\_\_\_
