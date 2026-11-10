@@ -52,14 +52,15 @@
 \contentsline {section}{Task 4: Insights}{60}{section*.53}%
 \contentsline {subsection}{Narrative thesis}{60}{section*.54}%
 \contentsline {subsection}{Dashboard sketch}{60}{section*.55}%
-\contentsline {subsection}{4.1 Data augmentation}{60}{section*.56}%
-\contentsline {subsection}{4.2 Key insights}{60}{section*.57}%
-\contentsline {subsection}{4.3 Design elements}{60}{section*.58}%
-\contentsline {subsection}{4.4 Audience consideration}{60}{section*.59}%
-\contentsline {subsection}{4.5 Additional questions}{60}{section*.60}%
-\contentsline {section}{Conclusions}{61}{section*.61}%
-\contentsline {section}{Section 5: Verification}{62}{section*.62}%
-\contentsline {subsection}{5.1 Results Summary Table}{62}{section*.63}%
-\contentsline {subsection}{5.2 Reproducibility appendix}{63}{section*.64}%
-\contentsline {section}{Appendix: Decision Log}{65}{section*.65}%
-\contentsline {section}{Declaration}{65}{section*.66}%
+\contentsline {subsection}{Dashboard Implementation (Self added extension)}{60}{section*.56}%
+\contentsline {subsection}{4.1 Data augmentation}{61}{section*.57}%
+\contentsline {subsection}{4.2 Key insights}{61}{section*.58}%
+\contentsline {subsection}{4.3 Design elements}{62}{section*.59}%
+\contentsline {subsection}{4.4 Audience consideration}{62}{section*.60}%
+\contentsline {subsection}{4.5 Additional questions}{62}{section*.61}%
+\contentsline {section}{Conclusions}{64}{section*.62}%
+\contentsline {section}{Section 5: Verification}{65}{section*.63}%
+\contentsline {subsection}{5.1 Results Summary Table}{65}{section*.64}%
+\contentsline {subsection}{5.2 Reproducibility appendix}{66}{section*.65}%
+\contentsline {section}{Appendix: Decision Log}{68}{section*.66}%
+\contentsline {section}{Declaration}{70}{section*.67}%

@@ -1808,12 +1808,12 @@ Renewables.csv & Renewables & 4 & Romania 2015; Romania 2016 \\
 
 {\def\LTcaptype{none} % do not increment counter
 \begin{longtable}[]{@{}
-  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1622}}
-  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1622}}
-  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1622}}
-  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1892}}
-  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1622}}
-  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1622}}@{}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1667}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1667}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1667}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1667}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1667}}
+  >{\raggedright\arraybackslash}p{(\linewidth - 10\tabcolsep) * \real{0.1667}}@{}}
 \toprule\noalign{}
 \begin{minipage}[b]{\linewidth}\raggedright
 File
@@ -3777,24 +3777,82 @@ manufactured goods and penalises making them, however clean the data.
 \emph{One sentence: the single story a reader should take away from your
 dashboard.}
 
-\textbf{YOUR ANSWER}
+Renewable electricity generation is growing faster than ever, yet annual
+emissions across my 150 countries reached a record 34,067.6 Mt in 2023:
+the energy transition is under way, but it is not yet fast enough to
+bend the emissions curve.
 
 \subsection{Dashboard sketch}\label{dashboard-sketch}
 
 \emph{Embed your photographed hand-drawn sketch below. This is mandatory
 --- without it you lose all design marks.}
 
+\includegraphics[width=1\linewidth]{dashboard_sketch}
+
+\subsection{Dashboard Implementation (Self added
+extension)}\label{dashboard-implementation-self-added-extension}
+
+I wanted to extend my learning from this unit and build upon my Data
+Science skills, so I challenged myself to create a proper Dashboard
+using the data from this assessment built in Python, the code used is
+included within the files.
+
+\includegraphics[width=1\linewidth]{dashboard_challenge}
+
 \subsection{4.1 Data augmentation}\label{data-augmentation}
 
 \emph{How would you augment this dataset for a comprehensive view of the
 transition? What sources, and what would each add?}
 
-\textbf{YOUR ANSWER}
+The current dataset shows how much renewable electricity each country
+generates, but not what share of its electricity this represents, and it
+holds only one year of population and GDP. I would bring in five
+additional sources to address these gaps. First, electricity generation
+by source from Ember and the Our World in Data energy dataset would
+convert renewable output in TWh into a renewable \emph{share} of total
+generation, which is the measure that shows whether clean power is
+displacing fossil power or simply meeting new demand. Second, primary
+energy consumption by fuel from the Energy Institute Statistical Review
+would separate coal, oil and gas, explaining why some countries'
+emissions fall faster than others' (and providing the
+\texttt{CumFossilEnergy} feature proposed in 3B). Third, annual
+population estimates from the UN World Population Prospects and annual
+GDP from the World Bank's World Development Indicators would replace the
+static 2022 values, allowing per-capita emissions and the carbon
+intensity of GDP to be tracked year by year. Fourth, the full Global
+Carbon Project series, including land-use change and all countries,
+would complete the global picture; Australia, for example, is absent
+from my 150-country sample. Finally, national targets from the UNFCCC
+and Climate Action Tracker would let the dashboard compare each
+country's actual trajectory with its pledges, turning a description of
+the past into an assessment of progress.
 
 \subsection{4.2 Key insights}\label{key-insights}
 
-\emph{Which insights would you highlight for a public audience? What
-figures would you use, and why is each important?}
+The dashboard highlights five insights, each mapped to one panel. The
+headline (KPI tiles and Panel 1) is that annual emissions reached a
+record 34,067.6 Mt in 2023. The only notable falls were in 2009 (-371.8
+Mt) and 2020 (-1,329.5 Mt, -4.04\%), and the 2020 fall reversed within a
+year (+1,538.9 Mt in 2021), showing that temporary shocks do not change
+the trend. Panel 1 pairs this with renewable generation on an aligned
+time axis, because the contrast between an accelerating renewables curve
+and a still-rising emissions line \emph{is} the thesis.
+
+Panel 2, a choropleth map of cumulative emissions per person, gives
+readers a geographic entry point and lets them locate their own region.
+Panel 3 shows that responsibility depends on the measure: China leads
+cumulative emissions (184,474.9 Mt), but Qatar leads per person (588.8
+t, 4.5 times China's 129.4 t), and only the United States and Saudi
+Arabia appear in both top 10 lists. Side-by-side bar charts are chosen
+because ranked bars make this reversal immediate. Panel 4, a diverging
+bar chart, shows that trade moves emissions between countries: the
+United States consumed 7,062.2 Mt more than it produced, while China
+produced 24,691.0 Mt more than it consumed. Panel 5 uses small multiples
+to show diverging pathways: in Germany and the United States emissions
+fall as renewables rise (Germany's renewables grew from 57.97 to 277.1
+TWh), while in China and India emissions keep climbing despite rapid
+renewable growth. Small multiples with shared scales let readers compare
+shapes without reading exact values.
 
 \textbf{YOUR ANSWER}
 
@@ -3802,31 +3860,85 @@ figures would you use, and why is each important?}
 
 \emph{Layout, colour, typography, placement.}
 
-\textbf{YOUR ANSWER}
+The layout follows the order in which a reader scans a page, top-left to
+bottom-right. Three KPI tiles sit beneath the title so the core story is
+visible in seconds, the largest panel (Panel 1) carries the thesis in
+the upper left, and supporting panels follow in a row beneath. A
+12-column grid with generous white space keeps the five panels distinct.
+Colour is used consistently and sparingly: orange always means emissions
+and bluish-green always means renewables, drawn from the
+colourblind-safe Okabe--Ito palette so that the two never rely on a
+red--green contrast. The map uses a single-hue sequential scale, and
+neutral grey is reserved for context such as gridlines. Typography uses
+one clean sans-serif typeface in a clear hierarchy: a large title, large
+bold numbers for the KPIs, medium panel titles and small axis labels.
+Every panel title states its takeaway in plain language (``Emissions hit
+a record in 2023'') rather than naming its variables, and annotations
+such as ``COVID-19'' are placed directly on the lines instead of in a
+separate legend.
 
 \subsection{4.4 Audience consideration}\label{audience-consideration}
 
 \emph{How does the design serve a public audience --- accessible,
 understandable, actionable?}
 
-\textbf{YOUR ANSWER}
+The design serves a public audience in three ways. It is
+\emph{accessible}: the colourblind-safe palette, high-contrast text,
+large fonts, direct labels and alternative text for each chart allow
+readers with visual impairments or on small screens to follow it. It is
+\emph{understandable}: each panel carries a single message, technical
+terms are explained in a ``How to read this'' box (for example,
+``consumption-based emissions count the emissions from everything a
+country buys, wherever it was made''), and quantities are expressed in
+relatable units such as tonnes per person. It is \emph{actionable}: the
+per-capita map and the total-versus-per-person toggle let readers place
+their own country in context, Panel 5 shows that falling emissions are
+achievable alongside rising renewables, and the footer notes the data's
+limits (the record begins in 2004 and covers 150 countries) so readers
+do not over-interpret it.
 
 \subsection{4.5 Additional questions}\label{additional-questions}
 
 \emph{One relevant metric or visualisation you deliberately omitted, and
 why omitting it serves clarity.}
 
-\textbf{YOUR ANSWER}
+I deliberately omitted the regression results from Task 3, including the
+correlation of 0.98 between cumulative emissions and GDP and the model
+RMSE values. They are relevant because they show how closely emissions
+track economic size, but they require statistical literacy to read, and
+my assumption checks showed that the linear model violates linearity,
+normality and constant variance, so a public reader could take a
+headline such as ``GDP explains 81\% of emissions'' as causal fact.
+Leaving the models out keeps every panel focused on the thesis and
+avoids presenting a fragile statistical result as a firm conclusion.
 
 \emph{One way your dashboard could be misread, and how design mitigates
 it.}
 
-\textbf{YOUR ANSWER}
+The choropleth map (Panel 2) could be misread because map area is
+unrelated to emissions: physically large countries dominate the eye,
+while the per-capita leaders (Qatar, Bahrain, and Trinidad and Tobago)
+are tiny and almost invisible. A reader could wrongly conclude that the
+largest countries have the highest per-person emissions. To mitigate
+this, the map shows a per-capita rate rather than totals, so area is not
+compounded by size; callout labels point to the small high-emitting
+states; and Panel 3 places a ranked bar chart beside the map, where
+every country gets a bar of equal visual weight.
 
 \emph{Does your headline figure use total or per-capita emissions?
 Defend that choice against the obvious objection.}
 
-\textbf{YOUR ANSWER}
+The headline uses total emissions: 34,067.6 Mt in 2023. The obvious
+objection is that totals unfairly emphasise populous countries and hide
+the fact that someone in Qatar is associated with 588.8 t of cumulative
+CO2 against 28.7 t in India. I chose totals because the atmosphere
+responds to total tonnes emitted, not to emissions per person, and the
+thesis asks whether the global curve is bending. The headline is also a
+sum across all countries, so it singles out no nation. The fairness
+concern is addressed directly rather than hidden: Panel 3 sets
+per-person rankings beside totals, Panel 4 adjusts for trade, and the
+map shows per-capita emissions, so a reader can see both the scale of
+the problem and how unevenly it is shared.
 
 \newpage
 
@@ -3835,7 +3947,55 @@ Defend that choice against the obvious objection.}
 \emph{What are the main things your analysis shows? Keep it grounded in
 your own numbers.}
 
-\textbf{YOUR ANSWER}
+The central finding of this analysis is that the energy transition is
+real but has not yet bent the emissions curve. Across my 150 countries,
+annual production-based emissions reached a record 34,067.6 Mt in 2023.
+The only meaningful falls in twenty years came from external shocks
+rather than policy: the financial crisis in 2009 (-371.8 Mt) and the
+COVID-19 pandemic in 2020 (-1,329.5 Mt, -4.04\%), the latter fully
+reversed by a 1,538.9 Mt rebound in 2021. Renewable generation, by
+contrast, accelerated throughout the period; China's alone rose
+eightfold, from 357.43 to 2,894.22 TWh. Yet even the fastest renewable
+growth in the dataset has so far added to fossil supply rather than
+replaced it, while Germany, Japan and the United States show that
+emissions can fall as renewables rise.
+
+A second finding is that who appears responsible depends on how
+emissions are measured. Emissions are highly concentrated: Asia accounts
+for 57\% of the cumulative total and China alone for 30\% (184,474.9
+Mt). Per person, however, the leader is Qatar at 588.8 t, 4.5 times
+China's 129.4 t, and only the United States and Saudi Arabia appear in
+both top 10 rankings. Trade shifts the picture again: the United States
+consumed 7,062.2 Mt more than it produced, while China produced 24,691.0
+Mt more than it consumed. No single measure is neutral, which matters
+for any policy that allocates responsibility.
+
+The modelling showed how easily a strong statistic can mislead. GDP
+correlates 0.98 with cumulative emissions, but GDP per capita correlates
+only 0.12, revealing that the relationship mostly reflects country size
+rather than wealth. The full linear model's apparent accuracy (test RMSE
+647.46 Mt against 1,719.84 Mt for GDP alone) came largely from
+\texttt{CumConsCO2}, which is near-identical to the target, and every
+regression diagnostic failed under the influence of China, India and the
+United States. A log-log model (577.66 Mt) handled the skewed data
+better, which was a lesson in matching the method to the data's
+distribution.
+
+The main challenge throughout was distinguishing errors from genuine
+extremes. Some defects were obvious once tested against physical limits,
+such as Sweden's negative 2022 emissions. Others were silent and would
+have passed unnoticed without cross-checks: Chile's population was
+recorded as 19,553, detectable only because GDP divided by GDP per
+capita implied 19.55 million, and five oil values were the code -999.
+Equally, genuine extremes had to be protected: the rapid renewable
+growth of countries like the UAE would have been deleted by an automatic
+spike rule, and China could not be removed simply because it distorted
+the model. Each imputation choice also carried consequences; assigning
+zero consumption to the 55 uncovered countries would have turned every
+one of them into an extreme carbon exporter. The most important lesson I
+take from this work is that data cleaning is not a mechanical step
+before the analysis but a series of judgements that shape the results,
+and that each of those judgements needs evidence, not intuition.
 
 \newpage
 
@@ -3971,7 +4131,7 @@ appendix}\label{reproducibility-appendix}
 \end{Shaded}
 
 \begin{verbatim}
-## Knitted at  : 2026-11-10 13:31:24 AEDT
+## Knitted at  : 2026-11-10 17:02:50 AEDT
 \end{verbatim}
 
 \begin{Shaded}
@@ -3981,7 +4141,7 @@ appendix}\label{reproducibility-appendix}
 \end{Shaded}
 
 \begin{verbatim}
-## Chunks run  : 44
+## Chunks run  : 45
 \end{verbatim}
 
 \begin{Shaded}
@@ -4030,11 +4190,71 @@ Impact on results
 \endhead
 \bottomrule\noalign{}
 \endlastfoot
-1 & & & & & \\
-2 & & & & & \\
-3 & & & & & \\
-4 & & & & & \\
-5 & & & & & \\
+1 & 1.1 Import (\texttt{ReadRaw()}) & Read every column as text
+(\texttt{col\_types\ =\ cols(.default\ =\ col\_character())},
+\texttt{trim\_ws\ =\ FALSE}) & Let \texttt{read\_csv()} guess column
+types & Type guessing would silently coerce comma-formatted numbers and
+strip padded ISO codes, hiding the defects before they could be counted
+& 5 comma-formatted \texttt{Consumption\ CO2} values (e.g.~China 2018,
+``9,443.433'') and 76 padded ISO codes were detected and logged instead
+of lost \\
+2 & 1.2 Renewables join key (\texttt{NormaliseName()},
+\texttt{name\_fixes}) & Mapped \texttt{Country.Region} names to ISO
+codes via normalised names and a spelling-variant list & Join on the raw
+country name & Renewables.csv has no ISO column, and names such as
+``Egypt, Arab Rep.'' and ``Burma'' do not match Emissions.csv exactly &
+All 6 variant names matched; the 1.5 join report shows 0 unused
+renewables rows \\
+3 & 1.2 Non-country rows (\texttt{renew\_non\_country}) & Removed
+``World'' and ``European Union (27)'' & Keep them in a separate data
+frame as a check on totals & Both are sums of countries already present
+(e.g.~France, Germany), so they would double-count renewables in Task 2
+& 40 country-year rows removed; Renewables matched to 146 countries \\
+4 & 1.4 Year type (\texttt{ParseYear()}) & Stored \texttt{Year} as a
+four-digit integer in every data frame & Convert to \texttt{Date} (1
+January of each year) & All data are annual; an integer joins exactly
+and supports \texttt{Year\ \%/\%\ 10} and
+\texttt{Year\ \textless{}\ 2016} without inventing a day and month & 114
+Consumption values in three formats (``FY2004'', ``01/01/2009'',
+``2010.0'') converted with 0 failures; 0 Consumption rows unused in the
+join \\
+5 & 1.4b Negative CO2 (\texttt{negative\_rows}) & Set the 4 negative
+\texttt{CO2} values to NA and interpolated from neighbouring years &
+Take the absolute value & The neighbours show the magnitude is also
+wrong: Sweden emitted 38.568 Mt in 2021 and 36.709 Mt in 2023, so
+flipping -2.594 would still be about 93\% too low & Sweden 2022 became
+37.64 Mt; Equatorial Guinea 2010 5.47, Sri Lanka 2012 14.31, Sudan 2018
+21.16 \\
+6 & 1.4b Missing-value codes in OilCO2 (\texttt{sentinel\_values}) &
+Treated -999 as missing and interpolated & Treat it as a negative value,
+or set it to 0 & -999 is a placeholder, not a measurement; left in, it
+would subtract 999 Mt from \texttt{CumOilCO2} & 5 rows repaired
+(e.g.~Qatar 2016, Zimbabwe 2010); OilCO2 had 0 NAs after 1.6 \\
+7 & 1.4b GDP consistency (\texttt{ctry\_inconsistent}) & Replaced
+Chile's \texttt{Population} (19,553) with the population implied by GDP
+and GDPCapita & Recompute Chile's \texttt{GDPCapita} from GDP and
+Population & GDP (448,338) and GDPCapita (22,929) agree with each other,
+so Population is the inconsistent value (ratio 0.001) & Chile's
+population became 19,553,317; otherwise its per-capita values would have
+been about 1,000 times too large \\
+8 & 1.6 Consumption coverage (\texttt{ConsImputed}) & Set
+\texttt{ConsCO2\ =\ CO2} for the 55 countries with no consumption data &
+Replace with 0 & Zero gives \texttt{NetImported\ =\ -CumCO2}, a share of
+-1, far outside the observed range among covered countries (-0.49 to
+2.572) & Algeria's NetImported is 0 instead of -2,898.4 Mt; the 55
+countries are flagged and excluded from the 3B evidence \\
+9 & 3.8 Extension model (\texttt{model\_log}) & Added a log-log linear
+model to the comparison & Use only the suggested ridge, lasso and tree &
+3.3 and the Shapiro test (W = 0.236 raw vs 0.994 logged) showed
+\texttt{CumCO2} is heavily right-skewed & Best test RMSE of all models:
+577.66 Mt (R² 0.979) vs 647.46 Mt for the full linear model \\
+10 & 3A iv Influential observation (\texttt{high\_lev\_country}) &
+Identified China as the high-leverage point but kept it in the reported
+models & Drop China permanently because it improves RMSE & China's
+values are genuine and it is the largest emitter; dropping it hides the
+most policy-relevant country & Test RMSE would fall from 647.46 to
+546.71 Mt without China, but the log model (577.66 Mt) improves fit
+while keeping it \\
 \end{longtable}
 }
 
@@ -4048,8 +4268,7 @@ from my own student ID, that the values reported in Section 5.1 are the
 values produced by the code in this document, and that all explanations
 and interpretations are my own work.
 
-\textbf{Student ID:} \_\_\_\_\_\_\_\_\_\_\_\_\_\_ \textbf{Date:}
-\_\_\_\_\_\_\_\_\_\_\_\_
+\textbf{Student ID:} u3284342 \textbf{Date:} 10/11/26
 \end{quote}
 
 \end{document}
