@@ -1,0 +1,65 @@
+\contentsline {section}{Introduction}{6}{section*.2}%
+\contentsline {subsection}{Assumptions}{6}{section*.3}%
+\contentsline {section}{Task 1: Data preparation and wrangling}{8}{section*.4}%
+\contentsline {subsubsection}{1.1 Import the four CSV files}{8}{section*.5}%
+\contentsline {subsubsection}{1.2 Reshape \texttt {Renewables.csv} to one row per country per year}{8}{section*.6}%
+\contentsline {subsubsection}{1.3 Rename the columns}{10}{section*.7}%
+\contentsline {subsubsection}{1.4 Make \texttt {Year} consistent across all data frames}{12}{section*.8}%
+\contentsline {subsubsection}{1.4b Remove non-country rows, duplicates and impossible values}{14}{section*.9}%
+\contentsline {subsubsection}{1.5 Merge the five new variables into the master data frame}{19}{section*.10}%
+\contentsline {subsubsection}{1.6 Handle the NAs}{21}{section*.11}%
+\contentsline {subsubsection}{1.7 Add \texttt {Decade} and \texttt {Period}}{23}{section*.12}%
+\contentsline {subsubsection}{1.8 Add the four cumulative variables}{24}{section*.13}%
+\contentsline {subsubsection}{1.9 Add \texttt {NetImported} and \texttt {OilShare}}{24}{section*.14}%
+\contentsline {subsubsection}{1.10 Add the four per-capita variables}{25}{section*.15}%
+\contentsline {subsection}{1A. Data Quality Audit Report}{27}{section*.16}%
+\contentsline {subsubsection}{i. Defect inventory}{27}{section*.17}%
+\contentsline {subsubsection}{ii. The negative emissions problem}{29}{section*.18}%
+\contentsline {subsubsection}{iii. Coverage gap in consumption-based data}{31}{section*.19}%
+\contentsline {section}{Task 2: Exploratory data analysis}{33}{section*.20}%
+\contentsline {subsubsection}{2.1 Highest-emitting year, and the largest year-on-year fall}{33}{section*.21}%
+\contentsline {subsubsection}{2.2 Cumulative totals over time for the whole dataset}{34}{section*.22}%
+\contentsline {subsubsection}{2.3 Extract \texttt {lastYear\_data}}{35}{section*.23}%
+\contentsline {subsubsection}{2.4 Top 10 countries on four measures}{35}{section*.24}%
+\contentsline {subsubsection}{2.5 Totals by region}{37}{section*.25}%
+\contentsline {subsubsection}{2.6 Cumulative emissions over time, top 10 countries (log Y)}{38}{section*.26}%
+\contentsline {subsubsection}{2.7 Faceted plot, one panel per country}{39}{section*.27}%
+\contentsline {subsubsection}{2.8 Top 10 by emissions per capita}{40}{section*.28}%
+\contentsline {subsubsection}{2.9 Total, average and median cumulative emissions by region}{41}{section*.29}%
+\contentsline {subsubsection}{2.10 Top 2 countries per region by emissions per capita}{42}{section*.30}%
+\contentsline {subsection}{2A. Counterintuitive finding}{43}{section*.31}%
+\contentsline {subsubsection}{Supporting visualisation}{43}{section*.32}%
+\contentsline {subsection}{2B. Visualisation design critique}{44}{section*.33}%
+\contentsline {section}{Task 3: Data-driven modelling}{46}{section*.34}%
+\contentsline {subsubsection}{3.1 Build \texttt {cor\_data}}{46}{section*.35}%
+\contentsline {subsubsection}{3.2 Correlation matrix}{46}{section*.36}%
+\contentsline {subsubsection}{3.3 Distribution of \texttt {CumCO2}, with and without log}{47}{section*.37}%
+\contentsline {subsubsection}{3.4 Train/test split}{48}{section*.38}%
+\contentsline {subsubsection}{3.5 Linear model: \texttt {CumCO2\ \textasciitilde {}\ GDP}}{49}{section*.39}%
+\contentsline {subsubsection}{3.6 Linear model: all predictors}{49}{section*.40}%
+\contentsline {subsubsection}{3.7 Interpret and compare the two models}{50}{section*.41}%
+\contentsline {subsubsection}{3.8 Alternative models}{51}{section*.42}%
+\contentsline {subsection}{3A. Assumption checking}{52}{section*.43}%
+\contentsline {subsubsection}{i. Linearity}{52}{section*.44}%
+\contentsline {subsubsection}{ii. Distribution of the response}{54}{section*.45}%
+\contentsline {subsubsection}{iii. Residual diagnostics}{54}{section*.46}%
+\contentsline {subsubsection}{iv. Influential observations}{56}{section*.47}%
+\contentsline {subsubsection}{v. Verdict}{57}{section*.48}%
+\contentsline {subsection}{3B. Feature engineering critique}{57}{section*.49}%
+\contentsline {subsubsection}{i. Theoretical critique}{57}{section*.50}%
+\contentsline {subsubsection}{ii. Proposed feature}{57}{section*.51}%
+\contentsline {subsubsection}{iii. Ethical risk}{58}{section*.52}%
+\contentsline {section}{Task 4: Insights}{60}{section*.53}%
+\contentsline {subsection}{Narrative thesis}{60}{section*.54}%
+\contentsline {subsection}{Dashboard sketch}{60}{section*.55}%
+\contentsline {subsection}{4.1 Data augmentation}{60}{section*.56}%
+\contentsline {subsection}{4.2 Key insights}{60}{section*.57}%
+\contentsline {subsection}{4.3 Design elements}{60}{section*.58}%
+\contentsline {subsection}{4.4 Audience consideration}{60}{section*.59}%
+\contentsline {subsection}{4.5 Additional questions}{60}{section*.60}%
+\contentsline {section}{Conclusions}{61}{section*.61}%
+\contentsline {section}{Section 5: Verification}{62}{section*.62}%
+\contentsline {subsection}{5.1 Results Summary Table}{62}{section*.63}%
+\contentsline {subsection}{5.2 Reproducibility appendix}{63}{section*.64}%
+\contentsline {section}{Appendix: Decision Log}{65}{section*.65}%
+\contentsline {section}{Declaration}{65}{section*.66}%

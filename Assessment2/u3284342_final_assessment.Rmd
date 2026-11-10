@@ -1,12 +1,14 @@
 ---
 title: "Final Assessment — Introduction to Data Science"
 subtitle: "11372 & 11516"
+author: "Ruhan Shafi (u3284342), University of Canberra"
 date: "`r format(Sys.Date(), '%d %B %Y')`"
 output:
-  pdf_document:
+  pdf_document: 
     toc: true
     toc_depth: 2
-    number_sections: false
+    latex_engine: xelatex
+    keep_tex: true
   html_document:
     toc: true
     toc_float: true
@@ -229,17 +231,94 @@ RSquared <- function(actual, predicted) {
 
 # Introduction
 
-*Briefly introduce the dataset, the questions you set out to answer, and
-how this report is organised. Half a page is plenty.*
+Understanding which countries are responsible for carbon dioxide
+emissions, and how that responsibility should be measured, is central
+to climate policy. This report examines national CO2 emissions and
+renewable electricity generation using data from Our World in Data's
+CO2 and energy datasets, which compile figures from the Global Carbon
+Project, Ember, the Energy Institute and the World Bank. Although the
+underlying values are genuine, the slice analysed here is personalised
+from my student ID: it covers 150 countries across six regions over the
+period 2004–2023 and arrives as four deliberately imperfect files. The
+master panel, \`Emissions.csv\`, records annual production-based CO2 and
+oil CO2 for each country; \`Renewables.csv\` reports renewable
+generation
+in a wide, name-keyed format; \`Consumption.csv\` provides
+trade-adjusted,
+consumption-based emissions for a subset of countries; and
+\`Countries.csv\` supplies static 2022 population and GDP figures. The
+files differ in shape, key structure and coverage, and each contains
+undisclosed data-quality defects, so preparing them for analysis is a
+substantial task in its own right.
 
-**YOUR ANSWER**
+The analysis is guided by four objectives. The first is to detect,
+document and defensibly repair those defects so that the four sources
+can be merged into a single tidy country-year panel. The second is to
+explore which countries and regions account for the largest share of
+emissions, and how rankings shift between total, per-capita and
+consumption-based measures. The third is to assess how well a country's
+cumulative emissions can be predicted from its economic and demographic
+characteristics, and whether the assumptions underlying linear
+regression hold for these data. The fourth is to translate these
+findings into a dashboard design that communicates the energy
+transition to a public audience.
+
+The work is carried out in R using a small set of established packages.
+The \`tidyverse\` provides the core tools for importing, reshaping and
+summarising data (\`readr\`, \`tidyr\`, \`dplyr\` and \`stringr\`) and
+for
+visualisation (\`ggplot2\`); \`lubridate\` parses the inconsistent year
+formats found in the source files; \`scales\` formats axis labels and
+logarithmic scales; \`knitr\` renders tables; and \`glmnet\` and
+\`rpart\`
+implement the ridge, lasso and regression-tree models used to extend the
+linear analysis.
+
+The anticipated outcome is a fully reproducible analysis: a cleaned
+master data frame in which every defect is logged alongside its method
+of detection and its treatment; a set of rankings and visualisations
+that distinguish countries that emit the most in total from those that
+emit most intensively; regression models evaluated on a held-out test
+set, with their assumptions examined and their limitations made
+explicit; and a dashboard design grounded in these results.
+
+The report is organised to follow these objectives. Task 1 imports,
+cleans, merges and extends the data, followed by a Data Quality Audit
+(1A). Task 2 explores the cleaned data, including a counterintuitive
+finding (2A) and a critique of one visualisation (2B). Task 3 develops
+and evaluates the predictive models, examines their assumptions (3A) and
+critiques the choice of predictor (3B). Task 4 presents the dashboard
+design, and the report concludes with a summary of findings, a
+verification table, a reproducibility appendix and a Decision Log.
 
 ## Assumptions
 
-*State any assumptions you are making about the data or the analysis
-before you begin.*
-
-**YOUR ANSWER**
+1.  **Emissions.csv defines the country set.** It is the master panel,
+    so its 150 countries and its 2004–2023 window define the scope.
+    Totals describe this sample, not the whole world; Australia, for
+    example, is not among my 150 countries.
+2.  **Units are consistent across years and countries:** emissions in
+    million tonnes of CO2 (Mt), renewables in terawatt-hours (TWh), GDP
+    in millions of international dollars and GDP per capita in
+    international dollars.
+3.  **`annual_co2_mt` is production-based fossil CO2.** It records
+    emissions inside a country's borders and contains no land-use sinks,
+    so a negative value is treated as an error, not a removal.
+4.  **Static country data apply to every year.** `Countries.csv` holds a
+    single 2022 value per country, so per-capita measures divide
+    cumulative totals by 2022 population.
+5.  **"Cumulative" means cumulative within the window.** `CumCO2` and
+    the other running totals start from 2004, not from a country's first
+    historical emissions.
+6.  **Missing is not zero.** A missing value is filled from the same
+    country's neighbouring years where possible; a country with no
+    consumption data is assumed trade-neutral (`ConsCO2 = CO2`).
+7.  **Aggregate rows are not countries.** Rows such as "World" or
+    "European Union (27)" duplicate the countries they contain and are
+    excluded.
+8.  **The Paris split follows the brief.** "Pre-Paris" covers years
+    before 2016 and "Post-Paris" 2016 onwards (the agreement was adopted
+    in December 2015).
 
 \newpage
 
@@ -389,7 +468,8 @@ for (name in c("emissions", "consumption", "countries")) {
   file <- paste0(str_to_title(name), ".csv")
   defect_log <- LogDefect(
     defect_log, file, "ISO", bad_iso,
-    "Regex ^[A-Z]{3}$ failed but passed after str_trim()/str_to_upper()",
+    paste("Failed the three-capital-letter regex but passed after",
+          "str_trim() and str_to_upper()"),
     "Trimmed and upper-cased"
   )
 }
@@ -932,13 +1012,13 @@ cat("Countries with population from the region median:",
 *Justify your treatment of each variable. Different variables may
 warrant different choices.*
 
-The 4 missing CO2 values and 5 missing OilCO2 values are those removed
-during cleaning in 1.4b, including the 4 negative CO2 figures, and each
-is listed in the defect log. I filled them by linear interpolation from
-the same country's neighbouring years. Annual emissions change gradually
-and each gap is a single year, so interpolation produces a realistic
-estimate, whereas replacing them with 0 would understate CumCO2 in every
-subsequent year.
+The 4 missing CO2 values are the negative figures removed in 1.4b, and
+the 5 missing OilCO2 values are -999 missing-value codes (for example
+Qatar 2016 and Zimbabwe 2010); each is listed in the defect log. I
+filled them by linear interpolation from the same country's neighbouring
+years. Annual emissions change gradually and each gap is a single year,
+so interpolation produces a realistic estimate, whereas replacing them
+with 0 would understate CumCO2 in every subsequent year.
 
 Renewables had 84 missing values, which needed two different treatments.
 Four of them are Romania's blank cells for 2015 to 2018, which I
@@ -1064,16 +1144,36 @@ summary(select(countries_raw %>%
                                ToNumber)),
                popData2022, GDP, `GDP/capita`))
 
-# ... and the defect log built step by step in Task 1.
+# ... and the defect log built step by step in Task 1 (detection and
+# handling text is shown in full in the table below).
 defect_log %>%
   filter(Rows > 0) %>%
-  kable(caption = "Defect inventory (generated from the detection code)")
+  select(File, Column, Rows, Example) %>%
+  kable(caption = "Defect log (generated from the detection code)")
 ```
 
-*The table above is generated by the detection code. Use it to complete
-or replace the manual table, adding a sentence of interpretation.*
+| File | Column | Rows affected | Example (country, year) | How I detected it | How I handled it |
+|------------|------------|------------|--------------|------------|------------|
+| Emissions.csv | All columns | 5 | Maldives 2008; Sierra Leone 2016 | `duplicated()` across every column returned TRUE | Removed with `distinct()` |
+| Emissions.csv | `annual_co2_mt` (CO2) | 4 | Sri Lanka 2012 (-3.645); Sweden 2022 (-2.594) | `summary()` showed a minimum of -3.645, which is physically impossible; `filter(CO2 < 0)` listed the rows | Set to NA, then interpolated from neighbouring years |
+| Emissions.csv | `annual_oil_co2_mt` (OilCO2) | 5 | Bosnia and Herzegovina 2007; Qatar 2016 (-999) | `summary()` showed a minimum of -999; exact match to the missing-value code | Set to NA, then interpolated |
+| Consumption.csv | `Country Code` (ISO) | 76 (50 countries) | " are" (United Arab Emirates) 2014 | Failed the three-capital-letter regex but passed after `str_trim()` + `str_to_upper()` | Trimmed and upper-cased |
+| Consumption.csv | `Year` | 114 | United Arab Emirates "FY2004", "01/01/2009", "2010.0" | `ClassifyYearFormat()` count table showed four formats | Converted to integer with `ParseYear()` (lubridate for dates) |
+| Consumption.csv | `Consumption CO2` | 5 | China 2018 ("9,443.433") | `str_detect(value, ",")`: thousands separator stored as text | Separator removed by `ToNumber()` |
+| Consumption.csv | `Consumption CO2` | 2 | Panama 2007 (0.28); Panama 2011 (0.17) | `FlagSpikes()`: below one-tenth of Panama's median (3.718) | Set to NA, then interpolated |
+| Consumption.csv | `Year` (missing years) | 3 | Panama 2006, 2008, 2016 | Join report: one country with 3 unmatched country-years | Interpolated within Panama's series |
+| Consumption.csv | Whole file (coverage) | 55 countries (1,100 master rows) | Aruba, Afghanistan, Angola (all years) | Join report: no Consumption row for these ISO codes | `ConsCO2 = CO2`, flagged `ConsImputed` (see iii) |
+| Countries.csv | `popData2022` (Population) | 1 | Chile 2022 (19,553) | `Population` differed from `GDP * 1e6 / GDPCapita` (ratio 0.001) | Replaced with implied population (19,553,317) |
+| Countries.csv | `GDP`, `GDP/capita` | 25 countries (500 master rows) | Aruba 2022; Andorra 2022 | NA count in the 1.6 missing-value table | Region-median GDPCapita; GDP derived from it |
+| Renewables.csv | `Country.Region` | 2 rows (40 country-years) | World 2004; European Union (27) 2004 | No match in the name lookup; aggregate keyword | Removed (would double-count countries) |
+| Renewables.csv | `Country.Region` | 6 names (120 country-years) | United States of America 2004; Burma 2004 | Name absent from Emissions `location` after normalisation | Mapped with `name_fixes` |
+| Renewables.csv | Year columns | 4 | Romania 2015–2018 | `is.na(Renewables)` after pivoting: blank cells | Interpolated between 2014 (27.12) and 2019 (24.63) |
+| Renewables.csv | Coverage | 4 countries (80 master rows) | See the 1.5 join report | Join report: 80 master rows unmatched | Set to 0, flagged `RenewImputed` |
 
-**YOUR ANSWER**
+Most defects were mechanical (duplicates, formats, keys, separators) and
+could be repaired without loss. The substantive ones (negative CO2, -999
+codes, Chile's population) were found by testing values against physical
+or arithmetic limits, not by inspection.
 
 ### ii. The negative emissions problem
 
@@ -1100,7 +1200,25 @@ negative_rows %>%
 published emissions series? What did you do, and what alternative did
 you reject?*
 
-**YOUR ANSWER**
+Four rows in Emissions.csv record negative annual emissions: Equatorial
+Guinea in 2010 (-0.995 Mt), Sri Lanka in 2012 (-3.645 Mt), Sudan in 2018
+(-1.256 Mt) and Sweden in 2022 (-2.594 Mt). Negative values do appear
+legitimately in published series in two situations. The first is a
+genuine removal of carbon from the atmosphere, for example when a
+country's forests or other land-use sinks absorb more CO2 than it emits,
+giving negative net emissions. The second is an accounting revision:
+when a previously published estimate is corrected downward, a series
+recording annual changes or corrections can show a negative entry even
+though nothing was physically removed. Neither applies here.
+annual_co2_mt measures production-based emissions, which contain no
+sinks, and each negative value sits between ordinary positive years;
+Sweden, for example, emitted 38.568 Mt in 2021 and 36.709 Mt in 2023.
+These rows are therefore data errors. I set them to NA and interpolated
+from the neighbouring years, giving Sweden 2022 a value of about 37.64
+Mt. This keeps each country's cumulative total realistic. I rejected
+taking the absolute value: it would replace Sweden's 2022 figure with
+2.594 Mt, still around 93% below its neighbours, so flipping the sign
+corrects the sign but not the size.
 
 ### iii. Coverage gap in consumption-based data
 
@@ -1155,7 +1273,36 @@ valid? If it biases `ConsCO2_PC` and `NetImported`, in which direction,
 and for which type of country is the bias worst? Support this with a
 number.*
 
-**YOUR ANSWER**
+55 of the 150 countries in my Emissions.csv (37%) have no
+consumption-based data at all, for example Aruba, Afghanistan and
+Angola.
+
+Imputing zero is not a valid strategy. A value of zero claims that a
+country's population consumed no goods or energy with embodied
+emissions, which is impossible. The data are missing, not zero. The
+coverage gap is also not random: the uncovered countries have a median
+population of 2.1 million against 16.1 million, a median GDP per capita
+of 11,085 against 17,023, and a median CumCO2 of 32.1 Mt against 821.7
+Mt. A zero would therefore distort one distinct group of countries
+rather than add random noise.
+
+Zero imputation biases both variables downward. ConsCO2_PC falls to 0
+for every uncovered country, and NetImported becomes -CumCO2, a
+NetImported/CumCO2 share of -1. That is twice as extreme as the largest
+real net exporter among covered countries (a share of -0.49), and far
+below their median of +0.15, which shows that the typical covered
+country is a net importer. Every uncovered country would wrongly appear
+as an extreme exporter of embodied carbon.
+
+The bias is worst for uncovered countries with large production-based
+emissions, which are typically fossil-fuel producers. In absolute terms,
+NetImported would be understated by the full cumulative total: 2,898.4
+Mt for Algeria and 2,889.6 Mt for Iraq. Per person, ConsCO2_PC would
+fall from 158.0 t to 0 for Libya and from 136.5 t to 0 for Serbia. I
+therefore imputed ConsCO2 = CO2 (trade-neutral, NetImported = 0)
+instead, while recognising that, if the covered countries' median share
+of +0.15 also holds for these countries, this still slightly understates
+their consumption.
 
 \newpage
 
@@ -1188,7 +1335,14 @@ kable(yearly_totals, digits = 1)
 
 *What caused the largest fall?*
 
-**YOUR ANSWER**
+Total emissions peaked at 34,067.6 Mt in 2023, and the largest fall was
+in 2020 (-1,329.5 Mt, -4.04%), which I attribute to the COVID-19
+pandemic, when lockdowns sharply cut transport and industrial fuel use.
+The fall is not a coverage artefact, since all 150 countries report in
+every year, and its temporary nature fits a pandemic shock: emissions
+rebounded by 1,538.9 Mt in 2021, the largest rise after 2010's recovery
+from the only other notable fall (-371.8 Mt in 2009, during the global
+financial crisis).
 
 ### 2.2 Cumulative totals over time for the whole dataset
 
@@ -1218,6 +1372,14 @@ ggplot(cum_totals, aes(Year, Value, colour = Measure)) +
        x = "Year", y = "Cumulative total", colour = NULL) +
   theme(legend.position = "bottom")
 ```
+
+*Observation:* by 2023 the 150 countries had emitted 606,423.7 Mt of
+production-based CO2 since 2004, with consumption-based emissions
+(597,745.8 Mt) tracking almost the same path, which is expected since
+trade only moves emissions between countries. Oil accounts for 30.3%
+(184,040.5 Mt) of the total. The renewables curve bends upward, unlike
+the near-straight emissions lines, showing that annual renewable
+generation grew faster over the period than annual emissions.
 
 ### 2.3 Extract `lastYear_data`
 
@@ -1278,6 +1440,14 @@ kable(region_totals, digits = 1, format.args = list(big.mark = ","),
       caption = "Cumulative totals by region (CO2 in Mt, renewables in TWh)")
 ```
 
+*Observation:* Asia accounts for 345,927.5 Mt, 57% of all cumulative
+emissions, and is the only region where consumption-based emissions
+(323,929.9 Mt) fall well below production, making it a net exporter of
+embodied carbon. Europe and North America are net importers: Europe
+consumed 109,687.0 Mt against 102,564.4 Mt produced. South America
+stands out for renewables, with 13,963.1 TWh against only 20,729.6 Mt of
+CO2.
+
 ### 2.6 Cumulative emissions over time, top 10 countries (log Y)
 
 ```{r t2q6, fig.width=8, fig.height=5}
@@ -1290,12 +1460,20 @@ ggplot(top10_series, aes(Year, CumCO2, colour = Country)) +
   geom_text(data = top10_labels, aes(label = Country), hjust = -0.1,
             size = 3, show.legend = FALSE) +
   scale_y_log10(labels = label_comma()) +
-  scale_x_continuous(expand = expansion(mult = c(0.02, 0.2))) +
+  scale_x_continuous(breaks = seq(2005, 2020, 5),
+                     expand = expansion(mult = c(0.02, 0.2))) +
   labs(title = "Cumulative CO2 emissions, top 10 countries",
        subtitle = "Log scale: equal vertical distances are equal ratios",
        x = "Year", y = "Cumulative CO2 (Mt, log scale)") +
   theme(legend.position = "none")
 ```
+
+*Observation:* China (184,474.9 Mt) and the United States (109,445.5 Mt)
+are far ahead of the rest; China's line overtakes the United States'
+around 2007. India's line keeps a steeper slope than Japan's and
+Russia's, so it overtook both during the period. The steep rise in the
+first years is the running total starting in 2004, not a surge in
+emissions.
 
 ### 2.7 Faceted plot, one panel per country
 
@@ -1321,6 +1499,14 @@ ggplot(top10_annual, aes(Year, Value, colour = Variable)) +
   theme(legend.position = "bottom",
         axis.text.x = element_text(angle = 45, hjust = 1))
 ```
+
+*Observation:* the panels split into two groups. In the United States,
+Japan and Germany annual CO2 declines while renewable generation rises
+(Germany's from 57.97 TWh in 2004 to 277.1 TWh in 2023). In China,
+India, Indonesia, Iran and Saudi Arabia emissions keep climbing; China's
+renewables grow fastest of all (357.43 to 2,894.22 TWh) but not fast
+enough to bend its emissions curve, and Saudi Arabia's renewable
+generation stays close to zero.
 
 ### 2.8 Top 10 by emissions per capita
 
@@ -1364,6 +1550,13 @@ ggplot(region_stats, aes(Region, Value, fill = Region)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
 
+*Observation:* comparing the three panels shows how skewed each region
+is. North America has the second-highest average (about 5,100 Mt) but
+one of the lowest medians, because the United States (109,445.5 Mt)
+dominates 22 mostly small countries. South America's median (about 1,230
+Mt) almost matches Asia's despite a far smaller total, because its 10
+countries are mostly mid-sized emitters with no single giant.
+
 ### 2.10 Top 2 countries per region by emissions per capita
 
 ```{r t2q10}
@@ -1384,16 +1577,42 @@ kable(top2_region, digits = 1, format.args = list(big.mark = ","),
 
 *What did you expect, and why was that reasonable?*
 
-**YOUR ANSWER**
+I expected the countries with the largest cumulative emissions to also
+lead the per-capita ranking, and expected any per-capita leaders outside
+that group to be oil-dominated economies. This was reasonable because a
+handful of large industrial economies dominate the totals (China alone
+emitted 184,474.9 Mt, 30% of the sample), and oil is the fuel most
+associated with high-consumption lifestyles and petro-states.
 
 *What does the data actually show? Quote a specific value, country or
 trend from your own plots.*
 
-**YOUR ANSWER**
+Only two countries, the United States (320.5 t per person) and Saudi
+Arabia (357.3 t), appear in both `top10total` and `top10percap`. The
+per-capita leader is Qatar at 588.8 t per person, 4.5 times China's
+129.4 t and 20 times India's 28.7 t, despite having just 2.9 million
+people and a cumulative total (1,703.1 Mt) under 1% of China's. Only 3
+of the top 10 per-capita countries have more than 10 million people. The
+supporting chart also contradicts the second half of my expectation:
+Qatar, Bahrain, Brunei and the United Arab Emirates sit at the top-left
+in dark colours, meaning oil makes up under a quarter of their
+cumulative emissions, while the oil-dominated (yellow) points are mostly
+small island economies such as Aruba.
 
 *What real-world mechanism could explain the discrepancy?*
 
-**YOUR ANSWER**
+Two mechanisms combine. The first is population size: per-capita
+emissions divide a country's total by its population, so a country with
+fewer than 3 million people needs only a modest industrial base to post
+a very high figure. The second is energy resource endowment combined
+with production-based accounting. Qatar, Bahrain, Brunei and the UAE are
+natural-gas exporters: liquefying and processing gas, refining,
+petrochemicals and energy-intensive industries such as aluminium
+smelting, all powered by cheap domestic gas, emit CO2 inside their
+borders, even though much of the output is exported and consumed
+elsewhere. Production-based accounting assigns all of those emissions to
+a small resident population, which is why gas, not oil, drives the
+highest per-capita figures.
 
 ### Supporting visualisation
 
@@ -1421,20 +1640,37 @@ ggplot(lastYear_data, aes(Population / 1e6, CO2_PC)) +
 *Caption (2–3 sentences): what does this chart show, and why did you
 choose this chart type?*
 
-**YOUR ANSWER**
+Each point is one country in 2023, placed by population and cumulative
+CO2 per person, with bubble size showing its cumulative total and colour
+its oil share. The per-capita leaders cluster at the top-left (small
+populations), while the largest total emitters (the biggest bubbles,
+China and India) sit at the right with moderate per-capita values. I
+chose a scatter plot with log axes because population ranges from
+thousands to 1.4 billion and per-capita emissions from under 1 to 589 t,
+and size and colour let one chart test both parts of the explanation.
 
 ------------------------------------------------------------------------
 
 ## 2B. Visualisation design critique
 
-**Visualisation chosen:** *(state which question it is from)*
+**Visualisation chosen:** Question 2.6, cumulative CO2 over time for the
+top 10 countries (log y-axis).
 
-*Approximately 150 words covering: two design decisions and what each
-communicates; one alternative you rejected and concretely why it would
-communicate worse; one limitation a reader could misinterpret, and how
-you would mitigate it.*
-
-**YOUR ANSWER**
+The first design decision was the log scale. Cumulative totals range
+from 10,360.2 Mt (Indonesia) to 184,474.9 Mt (China); on a log axis,
+equal vertical distances are equal ratios, so all ten growth paths are
+readable and comparable. The second was labelling each line at its end
+instead of using a legend, so a reader does not have to match ten
+colours. I rejected a linear y-axis: China and the United States would
+fill the plot while the other eight countries collapsed into an
+indistinguishable band near zero, hiding the fact that India overtook
+Japan and Russia, which matters to a climate-policy audience tracking
+emerging emitters. The limitation is that the log scale shrinks gaps:
+China's lead over Indonesia is about 18 times, but the lines look close.
+A reader could also mistake the steep early rise for an emissions surge
+when it is the running total starting in 2004. I would mitigate both
+with an annotation stating the ratio and a subtitle explaining that the
+totals start in 2004.
 
 \newpage
 
@@ -1483,7 +1719,15 @@ cat("cor(CumCO2, GDPCapita) =", round(cor_gdp_pc, 2), "\n")
 *Report `cor(CumCO2, GDP)` and `cor(CumCO2, GDPCapita)`. Why are those
 two numbers so different?*
 
-**YOUR ANSWER**
+`cor(CumCO2, GDP)` is 0.98 and `cor(CumCO2, GDPCapita)` is 0.12. They
+differ because GDP and cumulative emissions are both measures of *size*:
+they grow with a country's population and total economic activity, so
+the same few giants (China, the United States, India) top both. GDP per
+capita removes size and measures wealth per person, which on its own
+says little about total emissions: rich but small countries such as
+Luxembourg and Singapore have small totals, while populous middle-income
+countries such as China (GDP per capita 18,921) and India (7,350) have
+the largest.
 
 ### 3.3 Distribution of `CumCO2`, with and without log
 
@@ -1549,7 +1793,33 @@ cat("Test RMSE (all predictors):", round(rmse_full, 2), "Mt | Test R2:",
 *When should the first be preferred, and when the second? If the full
 model has the higher test RMSE, explain why — that is not an error.*
 
-**YOUR ANSWER**
+On the 52 test countries, the full model clearly outperforms the
+GDP-only model: its test RMSE is 647.46 Mt against 1,719.84 Mt, and its
+test R² is 0.973 against 0.812. In my split, the model with more
+predictors therefore does *not* have the higher test RMSE. Its advantage
+comes almost entirely from `CumConsCO2`, which correlates 0.99 with
+`CumCO2`. This is close to target leakage: consumption-based emissions
+are production-based emissions adjusted for trade, and for the 55
+countries without consumption data `CumConsCO2` was set equal to
+`CumCO2` in Task 1.6, so the model partly learns an identity.
+
+The GDP-only model should be preferred when the aim is explanation or
+when consumption data are unavailable. It is easy to interpret: each
+additional million dollars of GDP is associated with 0.00616 Mt (about
+6,200 t) more cumulative CO2 since 2004. Its single coefficient is also
+stable, whereas the full model's coefficients are distorted by
+multicollinearity: GDP receives a *negative* coefficient (-0.0052 Mt per
+million dollars) and GDPCapita is not significant (p = 0.342), because
+GDP and `CumConsCO2` carry almost the same information (r = 0.99).
+
+The full model is better for pure prediction when every predictor,
+including genuine consumption-based data, is available for the country
+being predicted.
+
+Had the full model's test RMSE been higher, that would not have been an
+error: extra correlated predictors can overfit the 98 training countries
+and generalise worse, and with only 52 test countries a single large
+emitter can swing the RMSE.
 
 ### 3.8 Alternative models
 
@@ -1604,17 +1874,19 @@ kable(model_comparison, digits = 3, format.args = list(big.mark = ","),
       caption = "Test-set performance (RMSE in Mt CO2)")
 ```
 
-*The comparison table above is generated from the code; you can delete
-the manual table below.*
-
-| Model                  | RMSE | R-squared |
-|------------------------|------|-----------|
-| Linear (GDP only)      |      |           |
-| Linear (all variables) |      |           |
-|                        |      |           |
-|                        |      |           |
-
-**YOUR ANSWER** *(brief comment on the comparison)*
+The log-log linear model performs best (test RMSE 577.66 Mt, R² 0.979),
+because modelling every variable on a log scale removes the extreme
+right skew of `CumCO2` (3.3) so that a few giants no longer dominate the
+fit. The plain full linear model is second (647.46 Mt). Regularisation
+did not help: lasso (985.15 Mt) and ridge (1,089.57 Mt) shrink
+coefficients towards zero, which costs accuracy when there are only four
+predictors and a strong signal. Lasso's coefficients are informative,
+though: it dropped GDP entirely and kept `CumConsCO2` (coefficient
+1.03), confirming that GDP adds nothing once consumption emissions are
+known. The regression tree is worst (2,075.52 Mt, R² 0.726): its
+predictions are piecewise constant, and with only a handful of very
+large countries in 98 training rows it cannot represent the extreme
+values that dominate RMSE.
 
 ------------------------------------------------------------------------
 
@@ -1654,7 +1926,16 @@ train_long %>%
 *Does a linear relationship look reasonable? Which predictor departs
 from it most clearly?*
 
-**YOUR ANSWER**
+A linear relationship looks reasonable for `CumConsCO2` and `GDP`: the
+linear and loess fits nearly coincide, and the Pearson correlations
+(0.995 and 0.983) match the Spearman rank correlations (0.988 and
+0.947). This fit is largely driven by a few very large countries,
+though, with most countries bunched near the origin. `GDPCapita` departs
+from linearity most clearly: its linear correlation is only 0.105, but
+its rank correlation is 0.533, a gap of 0.429, so richer countries do
+tend to emit more but not in a straight line. `Population` also curves
+visibly, because China and India have similar populations but very
+different emissions.
 
 ### ii. Distribution of the response
 
@@ -1669,7 +1950,15 @@ shapiro.test(log1p(train_data$CumCO2))
 *Using your plots from 3.3 — does raw `CumCO2` satisfy the normality
 assumption? Is a transformation warranted?*
 
-**YOUR ANSWER**
+No. The raw histogram in 3.3 puts almost every country in the first bin,
+with a long right tail out to China (184,474.9 Mt). In the training data
+the mean (5,312.5 Mt) is almost 15 times the median (362.2 Mt), and the
+Shapiro–Wilk test rejects normality decisively (W = 0.236, p \<
+2.2e-16). On the log scale the histogram is roughly symmetric and the
+test no longer rejects normality (W = 0.994, p = 0.947), so a log
+transformation is warranted. Strictly, the assumption applies to the
+residuals rather than the response, but a response this skewed produces
+skewed residuals, as the Q–Q plot in iii confirms.
 
 ### iii. Residual diagnostics
 
@@ -1679,12 +1968,12 @@ plot(model_full, which = c(1, 2, 3, 5))
 par(mfrow = c(1, 1))
 ```
 
-| Plot                  | What assumption it tests | Does your model satisfy it? |
-|-----------------------|--------------------------|-----------------------------|
-| Residuals vs Fitted   |                          |                             |
-| Normal Q-Q            |                          |                             |
-| Scale-Location        |                          |                             |
-| Residuals vs Leverage |                          |                             |
+| Plot | What assumption it tests | Does your model satisfy it? |
+|----------------------|------------------------|---------------------------|
+| Residuals vs Fitted | Linearity: residuals should scatter randomly around 0 at every fitted value | No: the red line curves upward, with China's residual far above 0 and the United States' at about -5,800 |
+| Normal Q-Q | Normality of the residuals: points should follow the diagonal | No: both tails leave the line, with China above +5 and India and the United States below -5 standardised residuals |
+| Scale-Location | Constant variance (homoscedasticity): the line should be flat | No: the line rises steeply from about 0.5 to 2.5, so the error spread grows with the size of the country |
+| Residuals vs Leverage | Influential observations: no point should lie beyond the Cook's distance contours | No: China (leverage 0.785), India (0.772) and the United States (0.678) lie beyond the Cook's distance 1 contour, against a threshold of 0.102 |
 
 ### iv. Influential observations
 
@@ -1713,20 +2002,39 @@ cat("Test RMSE with", high_lev_country, "removed:",
     round(rmse_full_drop, 2), "Mt (was", round(rmse_full, 2), "Mt)\n")
 ```
 
-**High-leverage country:** *name it*
+**High-leverage country:** China (leverage 0.785, Cook's distance 37.65)
 
-**New test RMSE without it:** *value*
+**New test RMSE without it:** 546.71 Mt (down from 647.46 Mt)
 
 *Is removing it defensible? Two sentences.*
 
-**YOUR ANSWER**
+Removing China is not defensible as data cleaning, because its values
+are genuine: it is the world's largest emitter (184,474.9 Mt), and a
+model that excludes it cannot describe the country that matters most for
+emissions policy. The lower test RMSE only shows that China was bending
+the fit for typical countries, a problem better addressed by the log
+transformation (577.66 Mt with China kept) than by deletion, unless
+China is explicitly modelled and reported separately.
 
 ### v. Verdict
 
 *Is linear regression a valid choice here? If assumptions are violated,
 what does that mean in practice for your coefficients and predictions?*
 
-**YOUR ANSWER**
+Linear regression on the raw scale is not a valid choice for inference
+here: all four diagnostics fail, and the fit is dominated by three
+countries. In practice, the standard errors and p-values in 3.6 cannot
+be trusted. The reported p \< 2e-16 for GDP overstates certainty, and
+GDP's negative coefficient reflects multicollinearity with `CumConsCO2`
+(r = 0.99), not a real effect, so individual coefficients should not be
+interpreted. Predictions are also unreliable for typical countries: the
+test RMSE of 647.46 Mt is larger than the median training country's
+entire cumulative total (362.2 Mt), so relative errors for small
+countries are huge, and prediction intervals assuming constant variance
+would be far too narrow for large countries. The model is usable only as
+a rough predictor for large emitters. A log-log specification, which
+improved the test RMSE to 577.66 Mt and makes the response approximately
+normal (W = 0.994), is the better choice.
 
 ------------------------------------------------------------------------
 
@@ -1742,7 +2050,16 @@ confounding or mediating variables GDP is proxying for. Reference your
 own correlation from 3.2, and contrast it with the `GDPCapita`
 correlation.*
 
-**YOUR ANSWER**
+Producing goods and services requires energy; where that energy comes
+from coal, oil and gas, more output means more combustion and more CO2.
+Yet the 0.98 correlation does not make GDP a cause. Population is a
+confounder: bigger countries have bigger economies and bigger emissions
+(`Population` correlates 0.82 with GDP and 0.78 with `CumCO2`). Energy
+use and the carbon intensity of the energy mix are mediators: Norway's
+GDP per capita of 88,390 comes with 499.84 TWh of renewables per million
+people. The contrast with `GDPCapita` (r = 0.12) shows that once size is
+removed, wealth explains almost nothing, so most of GDP's 0.98 measures
+how big a country is.
 
 ### ii. Proposed feature
 
@@ -1750,7 +2067,14 @@ correlation.*
 would construct it — what raw data, what calculation — and why it is
 more causally connected to emissions than GDP.*
 
-**YOUR ANSWER**
+`CumFossilEnergy`: cumulative, carbon-weighted fossil-fuel consumption.
+From Our World in Data's energy dataset, take each country's annual
+coal, oil and gas primary-energy consumption (TWh), multiply each fuel
+by its CO2 emission factor (coal emits roughly twice as much per unit of
+energy as gas), sum the three, and take a cumulative sum by country as
+in 1.8. It measures the combustion that physically releases CO2,
+capturing both mediators GDP only approximates, and separates a
+coal-powered economy from a hydro-powered one with the same GDP.
 
 ### iii. Ethical risk
 
@@ -1777,9 +2101,32 @@ bind_rows(
   select(Role, Country, NetImported, CumCO2, CumConsCO2, CO2_PC,
          ConsCO2_PC, GDP) %>%
   kable(digits = 1, format.args = list(big.mark = ","))
+
+# What the GDP-only model (3.5) predicts for the same two countries, and
+# how far each country's actual production sits from that prediction.
+covered_last %>%
+  filter(Country %in% c("United States", "China")) %>%
+  mutate(PredictedCumCO2 = predict(model_gdp, newdata = .),
+         ProductionGap = CumCO2 - PredictedCumCO2,
+         ConsumptionGap = CumConsCO2 - PredictedCumCO2) %>%
+  select(Country, GDP, CumCO2, CumConsCO2, PredictedCumCO2,
+         ProductionGap, ConsumptionGap) %>%
+  kable(digits = 1, format.args = list(big.mark = ","))
 ```
 
-**YOUR ANSWER**
+The unfairness is built into the model: its target is production-based
+emissions and its single GDP slope treats every dollar as equally
+carbon-intensive, so emissions embodied in trade are charged to the
+producer. The United States, the largest net importer (`NetImported` =
++7,062.2 Mt), consumed 116,507.7 Mt but produced 109,445.5 Mt; China,
+the largest net exporter (-24,691.0 Mt), produced 184,474.9 Mt but
+consumed 159,783.8 Mt. Against the GDP-only predictions (about 119,200
+Mt and 165,300 Mt), China's production sits about 19,200 Mt above its
+prediction and the United States' about 9,800 Mt below. Obligations set
+from this gap would brand China an over-emitter and the United States an
+under-emitter, yet on a consumption basis both sit below their
+predictions. Any model of this structure rewards importing manufactured
+goods and penalises making them, however clean the data.
 
 \newpage
 
@@ -1890,20 +2237,20 @@ cat(" 1. Fingerprint:", my$fingerprint, "\n",
 one, write `NA` and say why in a footnote below the table.*
 
 | \# | Quantity | Your value |
-|----|----|----|
-| 1 | Dataset fingerprint (printed by the setup chunk) |  |
-| 2 | First and last year in your dataset |  |
-| 3 | Number of countries in your `Emissions.csv` |  |
-| 4 | `dim()` of your final merged master data frame |  |
-| 5 | Number of duplicate rows you removed in Task 1 |  |
-| 6 | Countries and years of the negative-emissions rows (1A ii) |  |
-| 7 | Number of countries with no consumption-based data (1A iii) |  |
-| 8 | Year with the highest total CO2, and that total (Task 2.1) |  |
-| 9 | Top country by cumulative emissions, and by emissions per capita |  |
-| 10 | `cor(CumCO2, GDP)` and `cor(CumCO2, GDPCapita)` (2 dp) |  |
-| 11 | Test RMSE of the GDP-only model (Task 3.5) |  |
-| 12 | Test RMSE of the full model (Task 3.6) |  |
-| 13 | The high-leverage country you identified (3A iv) |  |
+|------------------------|------------------------|------------------------|
+| 1 | Dataset fingerprint (printed by the setup chunk) | EM-606669-0798-6584 |
+| 2 | First and last year in your dataset | 2004 and 2023 |
+| 3 | Number of countries in your `Emissions.csv` | 150 |
+| 4 | `dim()` of your final merged master data frame | 3000 x 26 |
+| 5 | Number of duplicate rows you removed in Task 1 | 5 |
+| 6 | Countries and years of the negative-emissions rows (1A ii) | Equatorial Guinea 2010; Sri Lanka 2012; Sudan 2018; Sweden 2022 |
+| 7 | Number of countries with no consumption-based data (1A iii) | 55 |
+| 8 | Year with the highest total CO2, and that total (Task 2.1) | 2023, 34,067.6 Mt |
+| 9 | Top country by cumulative emissions, and by emissions per capita | China (cumulative); Qatar (per capita) |
+| 10 | `cor(CumCO2, GDP)` and `cor(CumCO2, GDPCapita)` (2 dp) | 0.98 and 0.12 |
+| 11 | Test RMSE of the GDP-only model (Task 3.5) | 1,719.84 Mt |
+| 12 | Test RMSE of the full model (Task 3.6) | 647.46 Mt |
+| 13 | The high-leverage country you identified (3A iv) | China |
 
 ## 5.2 Reproducibility appendix
 
@@ -1929,7 +2276,7 @@ code, an output value. Generic entries receive zero marks. Add rows
 freely; more than five is viewed favourably.*
 
 | \# | Task & step | Decision made | Alternative considered | Why I chose this | Impact on results |
-|----|----|----|----|----|----|
+|------------|------------|------------|------------|------------|------------|
 | 1 |  |  |  |  |  |
 | 2 |  |  |  |  |  |
 | 3 |  |  |  |  |  |
